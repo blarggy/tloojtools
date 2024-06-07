@@ -1,0 +1,4 @@
+nfl_data_py
+leeger~=2.6.1
+pandas~=2.2.2
+selenium~=4.21.0
