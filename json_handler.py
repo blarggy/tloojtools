@@ -111,3 +111,60 @@ class CustomJSONEncoder(json.JSONEncoder):
                                       how='left', suffixes=('', '_passing'))
 
         final_df.to_excel(f'data/{json_file}_as_excel.xlsx', index=False)
+
+    @staticmethod
+    def normalize_gamelog_json_database_to_excel_format(json_file, year):
+        def flatten_dict(d, parent_key='', sep='_'):
+            items = []
+            for k, v in d.items():
+                new_key = parent_key + sep + k if parent_key else k
+                if isinstance(v, dict):
+                    items.extend(flatten_dict(v, new_key, sep=sep).items())
+                else:
+                    items.append((new_key, v))
+            return dict(items)
+
+        with open(json_file) as f:
+            data = json.load(f)
+
+        players_data = []
+        players_stats = []
+
+        for entry in data:
+            owner_id = entry['owner_id']
+            display_name = entry['display_name']
+            team_name = entry['team_name']
+            for player in entry['players_data']:
+                for player_name, player_details in player.items():
+                    player_info = player_details[0]
+                    player_info.update({
+                        'owner_id': owner_id,
+                        'display_name': display_name,
+                        'team_name': team_name,
+                        'player_name': player_name
+                    })
+                    players_data.append(player_info)
+
+                    # Extract and flatten player's stats
+                    flattened_player_stats = flatten_dict(player_details[1])
+                    flattened_player_stats.update({
+                            'owner_id': owner_id,
+                            'display_name': display_name,
+                            'team_name': team_name,
+                            'player_name': player_name
+                        })
+                    players_stats.append(flattened_player_stats)
+
+        players_df = pd.DataFrame(players_data)
+        players_stats_df = pd.DataFrame(players_stats)
+
+        final_df = players_df
+
+        if not players_stats_df.empty:
+            final_df = final_df.merge(players_stats_df, on=['owner_id', 'display_name', 'team_name', 'player_name'],
+                                      how='left', suffixes=('', f'{year}_stats'))
+        final_df.to_excel(f'{f.name}_as_excel.xlsx', index=False)
+
+
+if __name__ == '__main__':
+    CustomJSONEncoder.normalize_gamelog_json_database_to_excel_format('data/2023_gamelogs_leagueid_1075600889420845056.json', "2023")

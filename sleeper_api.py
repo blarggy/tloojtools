@@ -1,4 +1,6 @@
 import logging
+import math
+import time
 
 from sleeper.api import LeagueAPIClient
 from sleeper.api import PlayerAPIClient
@@ -19,7 +21,7 @@ import os
 
 import utils
 from json_handler import CustomJSONEncoder
-from constants import LEAGUE_ID
+from constants import LEAGUE_ID, GLOBAL_NFL_PLAYER_ID_FILE
 from constants import DATABASE_DIRECTORY
 from constants import GLOBAL_SLEEPER_PLAYER_DATA_FILE
 import nfl_api
@@ -132,9 +134,35 @@ class LeagueDatabase:
                                         player_id_table.loc[
                                             player_id_table['sleeper_id'] == int(player_id), 'pfr_id'].values[0]
                                     player_info = player_data[player_id]
-                                    game_log_data = nfl_stats.Stats(year=year, pfr_player_id=pfr_player_id).gamelogs_data()
-                                    stats = {f"{year} stats": game_log_data}
+                                    if type(pfr_player_id) is float:
+                                        logging.error(
+                                            f"{pfr_player_id=} is not in the {GLOBAL_NFL_PLAYER_ID_FILE} file. Trying to find the gamelogs page by hand...")
+                                        first_name = player_info["first_name"]
+                                        last_name = player_info["last_name"]
+                                        pfr_player_id_chars = last_name[:4] + first_name[:2]
+                                        pfr_player_id_char_list = [pfr_player_id_chars + str(i).zfill(2) for i in
+                                                                   range(10)]
+                                        logging.info(f"{pfr_player_id_char_list=}")
+                                        for id_no in pfr_player_id_char_list:
+                                            try:
+                                                game_log_data = nfl_stats.Stats(year=year, pfr_player_id=id_no).gamelogs_data()
+                                                time.sleep(5)  # respectfully wait
+                                                break
+                                            except Exception as e:
+                                                logging.error(f"The URL for {id_no} is not valid. {e=}")
+                                                print(f'URL for {id_no} is not valid, trying next...')
+                                                time.sleep(1)
+                                    else:
+                                        game_log_data = nfl_stats.Stats(year=year, pfr_player_id=pfr_player_id).gamelogs_data()
+                                        time.sleep(5)  # respectfully wait
+                                    game_log_data = game_log_data.apply(
+                                        lambda col: col.map(lambda x: list(x) if isinstance(x, tuple) else x)
+                                    )
+                                    game_log_data.columns = ['_'.join(map(str, col)).strip() for col in
+                                                             game_log_data.columns.values]
+                                    stats = {f"{year} stats": game_log_data.to_dict()}
                                     owner_data["players_data"].append({player_name: [player_info, stats]})
+                                    # break  # delete later, for debugging only (reduces the search to 1 player per team instead of all :)
                             final_data.append(owner_data)
 
             league_database_file = os.path.join(DATABASE_DIRECTORY, f"{year}_{method}_leagueid_{LEAGUE_ID}.json")
@@ -177,5 +205,54 @@ class SleeperLeague:
 if __name__ == '__main__':
     utils.logging_steup()
     # LeagueDatabase.generate_player_database()
-    LeagueDatabase.generate_league_database(["2023"], method="seasonal")
-    # LeagueDatabase.generate_league_database(["2023"], method="gamelogs")
+    # LeagueDatabase.generate_league_database(["2023"], method="seasonal")
+    LeagueDatabase.generate_league_database(["2023"], method="gamelogs")
+    # year = '2023'
+    # league = SleeperLeague(LEAGUE_ID)
+    # rosters = league.get_league_rosters_by_id()
+    # users = league.get_users_in_league_by_id()
+    #
+    # if not os.path.exists(f"{GLOBAL_SLEEPER_PLAYER_DATA_FILE}"):
+    #     LeagueDatabase.generate_player_database()
+    #
+    # with open(GLOBAL_SLEEPER_PLAYER_DATA_FILE, "r") as file:
+    #     player_data = json.load(file)
+    #
+    # player_id_table = nfl_api.create_player_id_table()
+    #
+    # for roster in rosters:
+    #     for user in users:
+    #         if roster.owner_id == user.user_id:
+    #             owner_data = {
+    #                 "owner_id": roster.owner_id,
+    #                 "display_name": user.display_name,
+    #                 "team_name": user.metadata['team_name'],
+    #                 "players_data": []
+    #             }
+    #             for player_id in roster.players:
+    #                 if player_id in player_data:
+    #                     player_name = \
+    #                         player_id_table.loc[
+    #                             player_id_table['sleeper_id'] == int(player_id), 'name'].values[0]
+    #                     pfr_player_id = \
+    #                         player_id_table.loc[
+    #                             player_id_table['sleeper_id'] == int(player_id), 'pfr_id'].values[0]
+    #                     player_info = player_data[player_id]
+    #                     print(f"{pfr_player_id=} {type(pfr_player_id)}")
+                        # if type(pfr_player_id) is float:
+                        #     logging.error(f"{pfr_player_id=} is not in the {GLOBAL_NFL_PLAYER_ID_FILE} file. Trying to find the gamelogs page by hand...")
+                        #     first_name = player_info["first_name"]
+                        #     last_name = player_info["last_name"]
+                        #     pfr_player_id_chars = last_name[:4] + first_name[:2]
+                        #     pfr_player_id_char_list = [pfr_player_id_chars + str(i).zfill(2) for i in range(10)]
+                        #     logging.info(f"{pfr_player_id_char_list=}")
+                        #     for id_no in pfr_player_id_char_list:
+                        #         try:
+                        #             game_log_data = nfl_stats.Stats(year=year, pfr_player_id=id_no).gamelogs_data()
+                        #             time.sleep(5)
+                        #             break
+                        #         except Exception as e:
+                        #             logging.error(f"The URL for {id_no} is not valid.")
+                        #             print(f'URL for {id_no} is not valid, trying next...')
+                        # else:
+                        #     game_log_data = nfl_stats.Stats(year=year, pfr_player_id=pfr_player_id).gamelogs_data()
