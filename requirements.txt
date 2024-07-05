@@ -3,5 +3,6 @@ leeger~=2.6.1
 pandas~=2.2.2
 selenium~=4.21.0
 html5lib~=1.1
-requests~=2.28.2
+requests~=2.32.3
 sleeper~=1.7.3
+flask~=3.0.3

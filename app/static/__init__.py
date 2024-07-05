@@ -1,0 +1,1 @@
+# Contains CSS, JavaScript, and other static files.

@@ -93,14 +93,6 @@ class Stats:
             seasonal_data()
 
     def gamelogs_data(self):
-        # year = self.year
-        # pfr_player_id = self.pfr_player_id
-        # url = f"https://www.pro-football-reference.com/players/{pfr_player_id[0]}/{pfr_player_id}/gamelog/{year}/"
-        # logging.info(f"Getting gamelogs for {url=}")
-        # print(f"Getting gamelogs for {url=}")
-        # df = pd.read_html(url)[0]
-        # df = df.fillna("0")
-        # return df
         year = self.year
         pfr_player_id = self.pfr_player_id
         url = f"https://www.pro-football-reference.com/players/{pfr_player_id[0]}/{pfr_player_id}/gamelog/{year}/"
@@ -135,28 +127,110 @@ class Stats:
         return None
 
 
+class Database:
+    """
+    Instantiate with a json database file, use methods to maniuplate database after stats files are created
+    """
+    def __init__(self, database_file):
+        self.database_file = database_file
+
+    stat_weight = {
+        'Passing_Yds': 0.04,
+        'Passing_TD': 4,
+        'Scoring_TD': 6,
+        'Scoring_Sfty': 8,
+        'Receiving_Rec': 0.5,
+        'Rushing_Yds': 0.1,
+        'Receiving_Yds': 0.1,
+        'Kick Returns_Rt': 0.04,
+        'Punt Returns_Ret': 0.04,
+        'Passing_Int': -2, #
+        'Sk': 4,
+        'Def Interceptions_Int': 6,
+        'Def Interceptions_PD': 4,
+        'Tackles_QBHits': 1,
+        'Tackles_TFL': 2,
+        'Tackles_Solo': 1,
+        'Tackles_Ast': 0.5,
+        'Fumbles_Fmb': -1,
+        'Fumbles_FL': -1, #
+        'Fumbles_Yds': 0.1, #
+        'Def Interceptions_Yds': 0.1, #
+        "blocked_kick": 8, # PFR doesn't include this information
+        'Fumbles_FF': 4, #
+        'Fumbles_FR': 4 #
+    }
+
+    def calculate_impact(self):
+        """
+        Calculate the impact of a player's stats on their team (assumes 'gamelogs' database)
+        """
+        with open(self.database_file) as file:
+            database_data = json.load(file)
+
+        player_data_dict = {}
+
+        # go through database and calculate fantasy points for each player
+        for roster in database_data:
+            for player in roster['players_data']:
+                for player_name in player:
+                    # print(f"{player=}")
+                    # print(f"{player_name=}")
+                    player_stats = player[player_name][1]
+                    # print(f"{player_stats=}")
+                    if player_name not in player_data_dict:
+                        player_data_dict[player_name] = []
+                    for year, stats_table in player_stats.items():
+                        for column_header, week_stats in stats_table.items():
+                            # print(f"{column_header=}")
+                            if column_header.startswith("Unnamed"):
+                                stat_key = column_header.split('_')[-1]
+                            else:
+                                stat_key = column_header
+                            # print(f"{stat_key=}")
+                            stats_dict = {}
+                            if stat_key in self.stat_weight:
+                                for index, stat_value in week_stats.items():
+                                    try:
+                                        fantasy_points = self.stat_weight[stat_key] * float(stat_value)
+                                    except ValueError:
+                                        fantasy_points = 0
+                                    stats_dict[index] = round(fantasy_points, 2)
+                            if stats_dict != {}:
+                                player_data_dict[player_name].append({stat_key: stats_dict})
+                                    # print(f"{index=}, {stat_key=}, {stat_value=}, {fantasy_points=}")
+        # print(f"{player_data_dict=}")
+
+        for player_name, stats in player_data_dict.items():
+            combined_stats = {}
+
+            for stat_column in stats:
+                for stat, value_dict in stat_column.items():
+                    for index, value in value_dict.items():
+                        if index in combined_stats:
+                            combined_stats[index] += round(value, 2)
+                        else:
+                            combined_stats[index] = round(value, 2)
+
+            player_data_dict[player_name].append({"combined_stats": combined_stats})
+
+        print(f"{player_data_dict=}")
+
+
+
+
+
+
+    def calculate_seasonal_impact(self):
+        """
+        Calculate the impact of a player's stats on their team (assumes 'seasonal' database)
+        """
+        pass
+
+
+
 
 
 
 if __name__ == '__main__':
-    # player_id_table = pandas.read_csv('json/player_id_table.csv')
-    # player_name = "Michael Pittman"
-    # player_id = "6819"
-    # passing_stats = Stats("2023", "passing").create_stats()
-    # scrimmage_stats = Stats("2023", "scrimmage").create_stats()
-    # defense_stats = Stats("2023", "defense").create_stats()
-    # print(passing_stats.loc[passing_stats['Player'] == player_name].to_string())
-    # player_pfr_id = player_id_table.loc[player_id_table['sleeper_id'] == int(player_id), 'pfr_id'].values[0]
-    # print(player_pfr_id)
-    # player_scrimmage_stats = scrimmage_stats.loc[
-    #     scrimmage_stats['(\'-additional\', \'-9999\')'].str.contains(str(player_pfr_id))]
-    # player_scrimmage_stats.to_json()
-    # print(type(player_scrimmage_stats))
-    # print(player_scrimmage_stats)
-    # print(scrimmage_stats.loc[scrimmage_stats[('Unnamed: 1_level_0', 'Player')].str.contains(player_name)].to_json())
-    # print(defense_stats.loc[defense_stats[('Unnamed: 1_level_0', 'Player')] == player_name].to_string())
-
-    # json_handler.CustomJSONEncoder.normalize_seasonal_json_database_to_excel_format("json/combined_data.json")
-
-    # Stats(year='2023', pfr_player_id='BrowJa09').gamelogs_data()
-    pass
+    Database('../data/2023_gamelogs_leagueid_1075600889420845056.json').calculate_impact()

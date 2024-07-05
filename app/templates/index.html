@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block content %}
+        <h1>tloojtools header</h1>
+        {% for league in league_info %}
+        <div><p>{{ league.team.username }} player: <b>{{ league.player_name }}</b></p></div>
+        {% endfor %}
+{% endblock %}
