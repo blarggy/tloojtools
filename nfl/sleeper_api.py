@@ -18,6 +18,7 @@ from json_handler import CustomJSONEncoder
 from constants import LEAGUE_ID, GLOBAL_NFL_PLAYER_ID_FILE
 from constants import DATABASE_DIRECTORY
 from constants import GLOBAL_SLEEPER_PLAYER_DATA_FILE
+from utils import rename_keys_in_json
 import nfl_api
 import nfl_stats
 
@@ -161,6 +162,9 @@ class LeagueDatabase:
             league_database_file = os.path.join(DATABASE_DIRECTORY, f"{year}_{method}_leagueid_{LEAGUE_ID}.json")
             with open(league_database_file, "w") as file:
                 json.dump(final_data, file, indent=4)
+
+            # clean up "Unnamed" columns the json file which comes from PFR
+            rename_keys_in_json(league_database_file)
 
 
 

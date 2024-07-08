@@ -1,4 +1,6 @@
 import io
+import os.path
+
 from requests.exceptions import HTTPError
 
 import requests
@@ -20,6 +22,8 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from utils import is_file_older_than_one_week
 from utils import validate_file
+from utils import create_backup
+from utils import logging_steup
 
 
 class Stats:
@@ -134,6 +138,7 @@ class Database:
     def __init__(self, database_file):
         self.database_file = database_file
 
+    # @TODO: Sleeper's API should return this info but it doesn't give everything, so this needs to be set manually...
     stat_weight = {
         'Passing_Yds': 0.04,
         'Passing_TD': 4,
@@ -144,7 +149,7 @@ class Database:
         'Receiving_Yds': 0.1,
         'Kick Returns_Rt': 0.04,
         'Punt Returns_Ret': 0.04,
-        'Passing_Int': -2, #
+        'Passing_Int': -2,
         'Sk': 4,
         'Def Interceptions_Int': 6,
         'Def Interceptions_PD': 4,
@@ -161,46 +166,62 @@ class Database:
         'Fumbles_FR': 4 #
     }
 
-    def calculate_impact(self):
+    def calculate_fantasy_points(self):
         """
         Calculate the impact of a player's stats on their team (assumes 'gamelogs' database)
         """
+
+        def get_player_stats(database_data, player_data_dict, process_stats_func):
+            for roster in database_data:
+                for player_data in roster['players_data']:
+                    for player_name, stats in player_data.items():
+                        player_stats = stats[1]
+                        player_data_dict.setdefault(player_name, [])
+                        for year, stats_table in player_stats.items():
+                            process_stats_func(player_name, stats_table)
+
+        def get_points(player_name, stats_table):
+            logging.info(f"Calculating fantasy points for {player_name}")
+            for column_header, week_stats in stats_table.items():
+                logging.debug(f"{column_header=}, {week_stats=}")
+                # TODO: use utils.rename_keys_in_json() to clean up column headers before calling this
+                if column_header.startswith("Unnamed"):
+                    stat_key = column_header.split('_')[-1]
+                else:
+                    stat_key = column_header
+                logging.debug(f"{stat_key=}")
+                stats_dict = {}
+                if stat_key in self.stat_weight:
+                    for index, stat_value in week_stats.items():
+                        try:
+                            fantasy_points = self.stat_weight[stat_key] * float(stat_value)
+                        except ValueError:
+                            fantasy_points = 0
+                        stats_dict[index] = round(fantasy_points, 2)
+                        logging.debug(f"{index=}, {stat_key=}, {stat_value=}, {fantasy_points=}")
+                if stats_dict != {}:
+                    player_data_dict[player_name].append({stat_key: stats_dict})
+
+        def write_points_to_file(player_name, stats_table):
+            if player_name in player_data_dict:
+                fantasy_points_dict = player_data_dict[player_name][-1]
+                if 'combined_stats' in fantasy_points_dict:
+                    stats_table["fantasy_points"] = fantasy_points_dict['combined_stats']
+
         with open(self.database_file) as file:
             database_data = json.load(file)
 
+        create_backup(os.path.abspath(file.name))
+
+        logging.info(f"Calculating fantasy points for each player in {self.database_file}")
         player_data_dict = {}
 
-        # go through database and calculate fantasy points for each player
-        for roster in database_data:
-            for player in roster['players_data']:
-                for player_name in player:
-                    # print(f"{player=}")
-                    # print(f"{player_name=}")
-                    player_stats = player[player_name][1]
-                    # print(f"{player_stats=}")
-                    if player_name not in player_data_dict:
-                        player_data_dict[player_name] = []
-                    for year, stats_table in player_stats.items():
-                        for column_header, week_stats in stats_table.items():
-                            # print(f"{column_header=}")
-                            if column_header.startswith("Unnamed"):
-                                stat_key = column_header.split('_')[-1]
-                            else:
-                                stat_key = column_header
-                            # print(f"{stat_key=}")
-                            stats_dict = {}
-                            if stat_key in self.stat_weight:
-                                for index, stat_value in week_stats.items():
-                                    try:
-                                        fantasy_points = self.stat_weight[stat_key] * float(stat_value)
-                                    except ValueError:
-                                        fantasy_points = 0
-                                    stats_dict[index] = round(fantasy_points, 2)
-                            if stats_dict != {}:
-                                player_data_dict[player_name].append({stat_key: stats_dict})
-                                    # print(f"{index=}, {stat_key=}, {stat_value=}, {fantasy_points=}")
-        # print(f"{player_data_dict=}")
+        # Calculate fantasy points for each player
+        get_player_stats(database_data, player_data_dict, get_points)
 
+        logging.debug(f"Before combining stats {player_data_dict=}")
+
+        # Add up stats for each player to get total fantasy points
         for player_name, stats in player_data_dict.items():
             combined_stats = {}
 
@@ -214,12 +235,13 @@ class Database:
 
             player_data_dict[player_name].append({"combined_stats": combined_stats})
 
-        print(f"{player_data_dict=}")
+        logging.debug(f"After combining stats {player_data_dict=}")
 
+        # Write the fantasy points for each respective player to the existing json file from player_data_dict
+        get_player_stats(database_data, player_data_dict, write_points_to_file)
 
-
-
-
+        with open(self.database_file, 'w') as file:
+            json.dump(database_data, file, indent=4)
 
     def calculate_seasonal_impact(self):
         """
@@ -228,9 +250,6 @@ class Database:
         pass
 
 
-
-
-
-
 if __name__ == '__main__':
-    Database('../data/2023_gamelogs_leagueid_1075600889420845056.json').calculate_impact()
+    logging_steup()
+    Database('../data/2023_gamelogs_leagueid_1075600889420845056.json').calculate_fantasy_points()

@@ -1,4 +1,6 @@
 import json
+import logging
+
 from sleeper.enum.nfl.NFLPlayerStatus import NFLPlayerStatus
 from sleeper.enum.Sport import Sport
 from sleeper.enum.SportTeam import SportTeam
@@ -141,10 +143,8 @@ class CustomJSONEncoder(json.JSONEncoder):
                                     data[col_name] = []
                                 data[col_name].append(value)
                     player_df = pd.DataFrame(data)
-                    # with pd.ExcelWriter('data/test.xlsx', mode='w', engine='openpyxl') as writer:
-                    #     player_df.to_excel(writer, sheet_name=player_name, index=False)
                     all_data.append(player_df)
-                    # print(player_df)
+                    logging.debug(f"{player_df=}")
 
         combined_df = pd.concat(all_data, ignore_index=True)
         columns = ['player_name', 'display_name', 'team_name', 'position', 'sleeper_player_id', 'height', 'weight'] + \
