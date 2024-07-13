@@ -158,12 +158,12 @@ class Database:
         'Tackles_Solo': 1,
         'Tackles_Ast': 0.5,
         'Fumbles_Fmb': -1,
-        'Fumbles_FL': -1, #
-        'Fumbles_Yds': 0.1, #
-        'Def Interceptions_Yds': 0.1, #
+        'Fumbles_FL': -1,
+        'Fumbles_Yds': 0.1,
+        'Def Interceptions_Yds': 0.1,
         "blocked_kick": 8, # PFR doesn't include this information
-        'Fumbles_FF': 4, #
-        'Fumbles_FR': 4 #
+        'Fumbles_FF': 4,
+        'Fumbles_FR': 4
     }
 
     def calculate_fantasy_points(self):
@@ -216,12 +216,12 @@ class Database:
         logging.info(f"Calculating fantasy points for each player in {self.database_file}")
         player_data_dict = {}
 
-        # Calculate fantasy points for each player
+        # Calculate fantasy points for each player, each section is scored based on the stat_weight dictionary
         get_player_stats(database_data, player_data_dict, get_points)
 
         logging.debug(f"Before combining stats {player_data_dict=}")
 
-        # Add up stats for each player to get total fantasy points
+        # Add up all stats for each player to get total fantasy points
         for player_name, stats in player_data_dict.items():
             combined_stats = {}
 

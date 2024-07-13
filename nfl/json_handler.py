@@ -130,7 +130,7 @@ class CustomJSONEncoder(json.JSONEncoder):
                     data = {'player_name': player_name,
                             'display_name': display_name,
                             'team_name': team_name,
-                            'position': player_details[0]['position'],
+                            'position': ' '.join(player_details[0]['fantasy_positions']),
                             'sleeper_player_id': player_details[0]['player_id'],
                             'height': player_details[0]['height'],
                             'weight': player_details[0]['weight']}

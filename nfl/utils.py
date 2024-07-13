@@ -25,6 +25,11 @@ def validate_file(file_name):
 
 
 def create_backup(file):
+    """
+    Creates a backup of the file in the backups directory.
+    :param file: File to create backup of
+    :return: str, name of the backup file
+    """
     if not os.path.exists(file):
         logging.info(f"create_backup() file {file} does not exist.")
         return
@@ -53,6 +58,10 @@ def delete_file(file):
 
 
 def rename_keys_in_json(json_file_path):
+    """
+    Renames the keys in a json file that start with "Unnamed" to the last part of the key. PFR exports have unnamed columns that are not useful.
+    :param json_file_path: Path to the json file
+    """
     with open(json_file_path, 'r') as file:
         data = json.load(file)
 
