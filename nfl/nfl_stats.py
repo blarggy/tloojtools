@@ -140,7 +140,7 @@ class Database:
 
     # @TODO: Sleeper's API should return this info but it doesn't give everything, so this needs to be set manually...
     stat_weight = {
-        'Passing_Yds': 0.04,
+        'Passing_Yds': 0.04,  # Passing_Yds.1 is due to yards lost due to sacks. We don't care about that.
         'Passing_TD': 4,
         'Scoring_TD': 6,
         'Scoring_Sfty': 8,
@@ -161,7 +161,7 @@ class Database:
         'Fumbles_FL': -1,
         'Fumbles_Yds': 0.1,
         'Def Interceptions_Yds': 0.1,
-        "blocked_kick": 8, # PFR doesn't include this information
+        "blocked_kick": 8,  # PFR doesn't include this information. Maybe someday.
         'Fumbles_FF': 4,
         'Fumbles_FR': 4
     }
@@ -175,13 +175,17 @@ class Database:
             for roster in database_data:
                 for player_data in roster['players_data']:
                     for player_name, stats in player_data.items():
+                        player_id = stats[0]['player_id']
+                        # Use a unique key to identify each player to avoid situations where players have identical names
+                        unique_key = f"{player_name}_{player_id}"
                         player_stats = stats[1]
-                        player_data_dict.setdefault(player_name, [])
+                        player_data_dict.setdefault(unique_key, [])
                         for year, stats_table in player_stats.items():
-                            process_stats_func(player_name, stats_table)
+                            process_stats_func(unique_key, stats_table)
 
-        def get_points(player_name, stats_table):
-            logging.info(f"Calculating fantasy points for {player_name}")
+        def get_points(unique_key, stats_table):
+            player_name, player_id = unique_key.rsplit('_', 1)
+            logging.info(f"Calculating fantasy points for {player_name} with ID {player_id}")
             for column_header, week_stats in stats_table.items():
                 logging.debug(f"{column_header=}, {week_stats=}")
                 # TODO: use utils.rename_keys_in_json() to clean up column headers before calling this
@@ -200,11 +204,11 @@ class Database:
                         stats_dict[index] = round(fantasy_points, 2)
                         logging.debug(f"{index=}, {stat_key=}, {stat_value=}, {fantasy_points=}")
                 if stats_dict != {}:
-                    player_data_dict[player_name].append({stat_key: stats_dict})
+                    player_data_dict[unique_key].append({stat_key: stats_dict})
 
-        def write_points_to_file(player_name, stats_table):
-            if player_name in player_data_dict:
-                fantasy_points_dict = player_data_dict[player_name][-1]
+        def write_points_to_file(unique_key, stats_table):
+            if unique_key in player_data_dict:
+                fantasy_points_dict = player_data_dict[unique_key][-1]
                 if 'combined_stats' in fantasy_points_dict:
                     stats_table["fantasy_points"] = fantasy_points_dict['combined_stats']
 
