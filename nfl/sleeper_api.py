@@ -13,14 +13,14 @@ from sleeper.model import (
 import json
 import os
 
-import utils
-from json_handler import CustomJSONEncoder
-from constants import LEAGUE_ID, GLOBAL_NFL_PLAYER_ID_FILE
-from constants import DATABASE_DIRECTORY
-from constants import GLOBAL_SLEEPER_PLAYER_DATA_FILE
-from utils import rename_keys_in_json
-import nfl_api
-import nfl_stats
+import nfl.utils as utils
+from nfl.json_handler import CustomJSONEncoder
+from nfl.constants import LEAGUE_ID, GLOBAL_NFL_PLAYER_ID_FILE
+from nfl.constants import DATABASE_DIRECTORY
+from nfl.constants import GLOBAL_SLEEPER_PLAYER_DATA_FILE
+from nfl.utils import rename_keys_in_json
+import nfl.nfl_api as nfl_api
+import nfl.nfl_stats as nfl_stats
 
 
 class LeagueDatabase:

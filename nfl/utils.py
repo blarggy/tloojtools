@@ -6,7 +6,7 @@ import shutil
 import time
 from datetime import datetime
 
-from constants import APP_LOG_DIRECTORY
+from nfl.constants import APP_LOG_DIRECTORY
 
 
 def is_file_older_than_one_week(file_path):
@@ -96,6 +96,7 @@ def logging_steup():
                         format='[%(asctime)s] p%(process)s {%(pathname)s:%(lineno)d}\n%(levelname)s - %(message)s',
                         level=logging.DEBUG)
     logging.info(f'Application started')
+
 
 if __name__ == '__main__':
     rename_keys_in_json("../data/2023_gamelogs_leagueid_1075600889420845056.json")

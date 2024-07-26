@@ -2,7 +2,7 @@ import json
 
 import nfl_data_py as nfl
 import pandas as pd
-from constants import GLOBAL_NFL_PLAYER_ID_FILE
+from nfl.constants import GLOBAL_NFL_PLAYER_ID_FILE
 
 
 def create_player_id_table():

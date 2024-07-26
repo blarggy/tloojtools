@@ -1,29 +1,21 @@
 import io
 import os.path
-
 from requests.exceptions import HTTPError
-
 import requests
-
 import json
 import logging
 import time
-import traceback
-
-import pandas
 import pandas as pd
-
-import json_handler
-from constants import DATABASE_DIRECTORY
+from nfl.constants import DATABASE_DIRECTORY
 import nfl_data_py as nfl
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from utils import is_file_older_than_one_week
-from utils import validate_file
-from utils import create_backup
-from utils import logging_steup
+from nfl.utils import is_file_older_than_one_week
+from nfl.utils import validate_file
+from nfl.utils import create_backup
+from nfl.utils import logging_steup
 
 
 class Stats:
