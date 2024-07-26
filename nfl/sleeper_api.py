@@ -8,12 +8,12 @@ from sleeper.model import (
     League,
     Roster,
     Player,
-    User,
+    User, ScoringSettings,
 )
 import json
 import os
 
-import nfl.utils as utils
+from nfl.utils import logging_steup
 from nfl.json_handler import CustomJSONEncoder
 from nfl.constants import LEAGUE_ID, GLOBAL_NFL_PLAYER_ID_FILE
 from nfl.constants import DATABASE_DIRECTORY
@@ -21,11 +21,12 @@ from nfl.constants import GLOBAL_SLEEPER_PLAYER_DATA_FILE
 from nfl.utils import rename_keys_in_json
 import nfl.nfl_api as nfl_api
 import nfl.nfl_stats as nfl_stats
+from nfl.nfl_stats import NFLStatsDatabase
 
 
-class LeagueDatabase:
+class FantasyLeagueDatabase:
     """
-    League Database object
+    Fantasy League Database object
     """
     @staticmethod
     def generate_player_database():
@@ -55,7 +56,7 @@ class LeagueDatabase:
         users = league.get_users_in_league_by_id()
 
         if not os.path.exists(f"{GLOBAL_SLEEPER_PLAYER_DATA_FILE}"):
-            LeagueDatabase.generate_player_database()
+            FantasyLeagueDatabase.generate_player_database()
 
         with open(GLOBAL_SLEEPER_PLAYER_DATA_FILE, "r") as file:
             player_data = json.load(file)
@@ -167,8 +168,6 @@ class LeagueDatabase:
             rename_keys_in_json(league_database_file)
 
 
-
-
 class SleeperLeague:
     def __init__(self, league_id):
         self.league_id = league_id
@@ -194,14 +193,29 @@ class SleeperLeague:
         league_users = LeagueAPIClient.get_users_in_league(league_id=self.league_id)
         return league_users
 
+    def get_league_scoring_settings(self) -> ScoringSettings:
+        league = self.get_league_by_id()
+        return league.scoring_settings
+
     @staticmethod
     def convert_owner_id_into_username(owner_id):
         pass
 
 
 if __name__ == '__main__':
-    utils.logging_steup()
+    """
+    Until this gets built out, this is a good starting point to use this tool.
+    1. Generate the Fantasy League database
+        FantasyLeagueDatabase.generate_league_database(["2023"], method="gamelogs")
+    2. Pass the result database .json object to NFLStatsDatabase to calculate fantasy points
+        NFLStatsDatabase('../json/database_filename.json', league).calculate_fantasy_points()
+    3. Convert the database object to .csv object
+        CustomJSONEncoder.normalize_gamelog_json_database_to_csv_format('../json/database_filename.json')
+    4. Pass the .csv to R script to generate cluster svgs
+    """
+    logging_steup()
     # LeagueDatabase.generate_league_database(["2023"], method="seasonal")
-    # LeagueDatabase.generate_league_database(["2023"], method="gamelogs")
-    print(SleeperLeague(LEAGUE_ID).get_league_by_id())
+    # FantasyLeagueDatabase.generate_league_database(["2023"], method="gamelogs")
+    league = SleeperLeague(LEAGUE_ID).get_league_by_id()
+    NFLStatsDatabase('../data/test_new_scoring.json', league).calculate_fantasy_points()
 

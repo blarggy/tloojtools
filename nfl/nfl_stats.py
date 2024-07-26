@@ -6,12 +6,15 @@ import json
 import logging
 import time
 import pandas as pd
-from nfl.constants import DATABASE_DIRECTORY
+from sleeper.model import League
+
+from nfl.constants import DATABASE_DIRECTORY, LEAGUE_ID
 import nfl_data_py as nfl
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+
 from nfl.utils import is_file_older_than_one_week
 from nfl.utils import validate_file
 from nfl.utils import create_backup
@@ -22,6 +25,7 @@ class Stats:
     """
     Instantiate with year, position (either "passing", "scrimmage" or "defense")
     """
+
     def __init__(self, year, position=None, pfr_player_id=None):
         self.year = year
         self.position = position
@@ -123,40 +127,46 @@ class Stats:
         return None
 
 
-class Database:
+class NFLStatsDatabase:
     """
-    Instantiate with a json database file, use methods to maniuplate database after stats files are created
+    Instantiate with a json database file and a league object, use methods to maniuplate database after stats files are created
     """
-    def __init__(self, database_file):
-        self.database_file = database_file
 
-    # @TODO: Sleeper's API should return this info but it doesn't give everything, so this needs to be set manually...
-    stat_weight = {
-        'Passing_Yds': 0.04,  # Passing_Yds.1 is due to yards lost due to sacks. We don't care about that.
-        'Passing_TD': 4,
-        'Scoring_TD': 6,
-        'Scoring_Sfty': 8,
-        'Receiving_Rec': 0.5,
-        'Rushing_Yds': 0.1,
-        'Receiving_Yds': 0.1,
-        'Kick Returns_Rt': 0.04,
-        'Punt Returns_Ret': 0.04,
-        'Passing_Int': -2,
-        'Sk': 4,
-        'Def Interceptions_Int': 6,
-        'Def Interceptions_PD': 4,
-        'Tackles_QBHits': 1,
-        'Tackles_TFL': 2,
-        'Tackles_Solo': 1,
-        'Tackles_Ast': 0.5,
-        'Fumbles_Fmb': -1,
-        'Fumbles_FL': -1,
-        'Fumbles_Yds': 0.1,
-        'Def Interceptions_Yds': 0.1,
-        "blocked_kick": 8,  # PFR doesn't include this information. Maybe someday.
-        'Fumbles_FF': 4,
-        'Fumbles_FR': 4
-    }
+    def __init__(self, database_file, league: League):
+        self.database_file = database_file
+        self.League = league
+        # TODO: To make this scalable, I'll need to get EVERY possible Sleeper scoring stat from API. I only account for TLOOJ atm.
+        self.stat_weight = {
+            'Passing_Yds': league.scoring_settings.pass_yd,  # Passing_Yds.1 is due to yards lost due to sacks. We don't care about that.
+            'Passing_TD': league.scoring_settings.pass_td,
+            'Receiving_TD': league.scoring_settings.rec_td,
+            'Rushing_TD': league.scoring_settings.rush_td,
+            'Kick Returns_TD': league.scoring_settings.st_td,  # Might need to check this, kr_td is a different stat I think for D/ST?
+            'Punt Returns_TD': league.scoring_settings.st_td,
+            'Fumbles_TD': league.scoring_settings.idp_def_td,
+            'Def Interceptions_TD': league.scoring_settings.idp_def_td,
+            'Scoring_Sfty': league.scoring_settings.idp_safe,
+            'Receiving_Rec': league.scoring_settings.rec,
+            'Rushing_Yds': league.scoring_settings.rush_yd,
+            'Receiving_Yds': league.scoring_settings.rec_yd,
+            'Kick Returns_Yds': league.scoring_settings.kr_yd,
+            'Punt Returns_Yds': league.scoring_settings.pr_yd,
+            'Passing_Int': league.scoring_settings.pass_int,
+            'Sk': league.scoring_settings.idp_sack,
+            'Def Interceptions_Int': league.scoring_settings.idp_int,
+            'Def Interceptions_PD': league.scoring_settings.idp_pass_def,
+            'Tackles_QBHits': league.scoring_settings.idp_qb_hit,
+            'Tackles_TFL': league.scoring_settings.idp_tkl_loss,
+            'Tackles_Solo': league.scoring_settings.idp_tkl_solo,
+            'Tackles_Ast': league.scoring_settings.idp_tkl_ast,
+            'Fumbles_Fmb': league.scoring_settings.fum,
+            'Fumbles_FL': league.scoring_settings.fum_lost,
+            'Fumbles_Yds': league.scoring_settings.fum_ret_yd,
+            'Def Interceptions_Yds': league.scoring_settings.int_ret_yd,
+            "blocked_kick": league.scoring_settings.idp_blk_kick,  # PFR doesn't include this information. Maybe someday.
+            'Fumbles_FF': league.scoring_settings.idp_ff,
+            'Fumbles_FR': league.scoring_settings.idp_fum_rec
+        }
 
     def calculate_fantasy_points(self):
         """
@@ -191,7 +201,7 @@ class Database:
                     for index, stat_value in week_stats.items():
                         try:
                             fantasy_points = self.stat_weight[stat_key] * float(stat_value)
-                        except ValueError:
+                        except (ValueError, TypeError):
                             fantasy_points = 0
                         stats_dict[index] = round(fantasy_points, 2)
                         logging.debug(f"{index=}, {stat_key=}, {stat_value=}, {fantasy_points=}")
@@ -248,4 +258,3 @@ class Database:
 
 if __name__ == '__main__':
     logging_steup()
-    Database('../data/2023_gamelogs_leagueid_1075600889420845056.json').calculate_fantasy_points()

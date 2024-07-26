@@ -115,7 +115,7 @@ class CustomJSONEncoder(json.JSONEncoder):
         final_df.to_excel(f'../data/{json_file}_as_excel.xlsx', index=False)
 
     @staticmethod
-    def normalize_gamelog_json_database_to_excel_format(json_file):
+    def normalize_gamelog_json_database_to_csv_format(json_file):
         with open(json_file) as f:
             database = json.load(f)
 
@@ -158,9 +158,9 @@ class CustomJSONEncoder(json.JSONEncoder):
                        'height',
                        'weight']]
         combined_df = combined_df[columns]
-        combined_df.to_excel(f'../data/{json_file}_as_excel.xlsx', index=False)
+        combined_df.to_csv(f'../data/{json_file}_as_csv.csv', index=False)
 
 
 if __name__ == '__main__':
-    CustomJSONEncoder.normalize_gamelog_json_database_to_excel_format('../data/2023_gamelogs_leagueid_1075600889420845056.json')
+    CustomJSONEncoder.normalize_gamelog_json_database_to_csv_format('../data/test_new_scoring.json')
     # CustomJSONEncoder.normalize_gamelog_json_database_to_excel_format('data/test.json')

@@ -99,4 +99,4 @@ def logging_steup():
 
 
 if __name__ == '__main__':
-    rename_keys_in_json("../data/2023_gamelogs_leagueid_1075600889420845056.json")
+    rename_keys_in_json("../data/test_new_scoring.json")
