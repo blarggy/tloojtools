@@ -181,22 +181,8 @@ summarize_data <- function(data, position) {
   return(data)
 }
 
-perform_clustering <- function(data, num_clusters, position) {
-  if(position=="QB")
-    data_ <- data[, 6:35]
-  else if(position=="WR")
-    data_ <- data[, 6:21]
-  else if(position=="RB")
-    data_ <- data[, 6:26]
-  else if(position=="TE")
-    data_ <- data[, 6:21]
-  else if(position=="DL")
-    data_ <- data[, 6,26]
-  else if(position=="LB")
-    data_ <- data[, 6:26]
-  else if(position=="DB")
-    data_ <- data[, 6:27]
-  # data_ <- data[, 6:length(data)]
+perform_clustering <- function(data, num_clusters) {
+  data_ <- data[, 6:length(data)]
   # methodtest <- function(x) { agnes(data_, method = x)$ac }
   # m <- c("average", "single", "complete", "ward")
   # map_dbl(m, methodtest)
@@ -251,7 +237,7 @@ plots <- list()
 for (pos in positions) {
   data <- clean_data(database, pos$position, pos$columns, pos$snap_pct_col, pos$catch_pct_col)
   data <- summarize_data(data, pos$position)
-  clustering_result <- perform_clustering(data, pos$num_clusters, pos$position)
+  clustering_result <- perform_clustering(data, pos$num_clusters)
   data_out <- clustering_result%>%select(playerName,avgSnaps,totalFP,cluster)
 
   if (pos$position=="WR")
