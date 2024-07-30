@@ -241,7 +241,7 @@ for (pos in positions) {
   data_out <- clustering_result%>%select(playerName,avgSnaps,totalFP,cluster)
 
   if (pos$position=="WR")
-    data_out$index<-ifelse(data_out$cluster==2,1,ifelse(data_out$cluster==2,2,ifelse(data_out$cluster==3,2,data_out$cluster)))
+    data_out$index<-ifelse(data_out$cluster==1,3,ifelse(data_out$cluster==2,1,ifelse(data_out$cluster==3,2,data_out$cluster)))
   if (pos$position=="QB")
     data_out$index<-ifelse(data_out$cluster==2,1,ifelse(data_out$cluster==1,5,ifelse(data_out$cluster==5,4,ifelse(data_out$cluster==4,2,data_out$cluster))))
   if (pos$position=="RB")
