@@ -8,12 +8,24 @@ database <- read.csv("data/test_new_scoring.json_as_csv.csv")
 database <- database[!database$Week == "null",]
 
 get_column_names <- function(position) {
-  rb_wr_te_columns <- c("player_name", "display_name", "team_name", "position", "sleeper_player_id",
-                        "height", "weight", "G.", "Off..Snaps_Num", "Off..Snaps_Pct", "Receiving_Tgt",
-                        "Receiving_Rec", "Receiving_Yds", "Receiving_Y.R", "Receiving_TD",
-                        "Receiving_Ctch.", "Receiving_Y.Tgt", "Scoring_2PM", "Scoring_TD",
-                        "Scoring_Pts", "Fumbles_Fmb", "Fumbles_FL", "Rushing_Att", "Rushing_Yds",
-                        "Rushing_Y.A", "Rushing_TD", "Passing_Cmp", "fantasy_points")
+  rb_columns <- c("player_name", "display_name", "team_name", "position", "sleeper_player_id",
+                "height", "weight", "G.", "Off..Snaps_Num", "Off..Snaps_Pct", "Receiving_Tgt",
+                "Receiving_Rec", "Receiving_Yds", "Receiving_Y.R", "Receiving_TD", "Receiving_Ctch.",
+                "Receiving_Y.Tgt", "Scoring_2PM", "Scoring_TD", "Scoring_Pts", "Fumbles_Fmb",
+                "Fumbles_FL", "Rushing_Att", "Rushing_Yds", "Rushing_Y.A", "Rushing_TD",
+                "Passing_Cmp", "fantasy_points")
+
+  wr_columns <- c("player_name", "display_name", "team_name", "position", "sleeper_player_id",
+                  "height", "weight", "G.", "Off..Snaps_Num", "Off..Snaps_Pct", "Receiving_Tgt",
+                  "Receiving_Rec", "Receiving_Yds", "Receiving_Y.R", "Receiving_TD", "Receiving_Ctch.",
+                  "Receiving_Y.Tgt", "Scoring_2PM", "Scoring_TD", "Scoring_Pts", "Fumbles_FL",
+                  "fantasy_points")
+
+  te_columns <- c("player_name", "display_name", "team_name", "position", "sleeper_player_id",
+                "height", "weight", "G.", "Off..Snaps_Num", "Off..Snaps_Pct", "Receiving_Tgt",
+                "Receiving_Rec", "Receiving_Yds", "Receiving_Y.R", "Receiving_TD", "Receiving_Ctch.",
+                "Receiving_Y.Tgt", "Scoring_2PM", "Scoring_TD", "Scoring_Pts", "Fumbles_Fmb",
+                "Fumbles_FL", "fantasy_points")
 
   qb_columns <- c("player_name", "display_name", "team_name", "position", "sleeper_player_id",
                   "height", "weight", "G.", "Off..Snaps_Num", "Off..Snaps_Pct", "Scoring_2PM",
@@ -30,9 +42,15 @@ get_column_names <- function(position) {
                         "Def.Interceptions_Yds", "Def.Interceptions_TD", "Def.Interceptions_PD",
                         "Scoring_Sfty")
 
-  if (position %in% c("RB", "WR", "TE")) {
-    return(rb_wr_te_columns)
-  } else if (position == "QB") {
+  if (position == "WR") {
+    return(wr_columns)
+  } else if (position == "RB") {
+    return(rb_columns)
+  }
+    else if (position == "TE") {
+    return(te_columns)
+  }
+    else if (position == "QB") {
     return(qb_columns)
   } else if (position %in% c("DB", "LB", "DL")) {
     return(db_lb_dl_columns)
@@ -115,7 +133,33 @@ summarize_data <- function(data, position) {
         avgsackedPct = mean(Passing_Sk, na.rm = TRUE),
         avgAdjAYdsAtt = mean(Passing_AY.A, na.rm = TRUE)
       )
-  } else if (position %in% c("TE", "WR", "RB")) {
+  } else if (position %in% "WR") {
+    data <- data %>%
+      group_by(sleeper_player_id) %>%
+      reframe(
+        ID = max(sleeper_player_id, na.rm = TRUE),
+        playerName = max(player_name, na.rm = TRUE),
+        human = max(display_name, na.rm = TRUE),
+        team = max(team_name, na.rm = TRUE),
+        totalSnaps = sum(Off..Snaps_Num, na.rm = TRUE),
+        avgSnaps = mean(Off..Snaps_Num, na.rm = TRUE),
+        avgSapsPct = mean(Off..Snaps_Pct, na.rm = TRUE),
+        weight = max(weight, na.rm = TRUE),
+        height = max(height, na.rm = TRUE),
+        totalFP = sum(fantasy_points, na.rm = TRUE),
+        totalTargets = sum(Receiving_Tgt, na.rm = TRUE),
+        avgTargets = mean(Receiving_Tgt, na.rm = TRUE),
+        totalReceptions = sum(Receiving_Rec, na.rm = TRUE),
+        avgReceptions = mean(Receiving_Rec, na.rm = TRUE),
+        totalYards = sum(Receiving_Yds, na.rm = TRUE),
+        avgYards = mean(Receiving_Yds, na.rm = TRUE),
+        `avgY/R` = mean(Receiving_Y.R, na.rm = TRUE),
+        totalPts = sum(Scoring_Pts, na.rm = TRUE),
+        avgCatchPct = mean(Receiving_Ctch., na.rm = TRUE),
+        `avgY/Tgt` = mean(Receiving_Y.Tgt, na.rm = TRUE),
+        totalFl = sum(Fumbles_FL, na.rm = TRUE)
+      )
+  } else if (position %in% "RB") {
     data <- data %>%
       group_by(sleeper_player_id) %>%
       reframe(
@@ -145,7 +189,35 @@ summarize_data <- function(data, position) {
         avgRushingYds = mean(Rushing_Yds, na.rm = TRUE),
         avgRushingYA = mean(Rushing_Y.A, na.rm = TRUE)
       )
-  } else if (position %in% c("DL", "LB", "DB")) {
+  }
+    else if (position %in% "TE") {
+    data <- data %>%
+      group_by(sleeper_player_id) %>%
+      reframe(
+        ID = max(sleeper_player_id, na.rm = TRUE),
+        playerName = max(player_name, na.rm = TRUE),
+        human = max(display_name, na.rm = TRUE),
+        team = max(team_name, na.rm = TRUE),
+        totalSnaps = sum(Off..Snaps_Num, na.rm = TRUE),
+        avgSnaps = mean(Off..Snaps_Num, na.rm = TRUE),
+        avgSapsPct = mean(Off..Snaps_Pct, na.rm = TRUE),
+        weight = max(weight, na.rm = TRUE),
+        height = max(height, na.rm = TRUE),
+        totalFP = sum(fantasy_points, na.rm = TRUE),
+        totalTargets = sum(Receiving_Tgt, na.rm = TRUE),
+        avgTargets = mean(Receiving_Tgt, na.rm = TRUE),
+        totalReceptions = sum(Receiving_Rec, na.rm = TRUE),
+        avgReceptions = mean(Receiving_Rec, na.rm = TRUE),
+        totalYards = sum(Receiving_Yds, na.rm = TRUE),
+        avgYards = mean(Receiving_Yds, na.rm = TRUE),
+        `avgY/R` = mean(Receiving_Y.R, na.rm = TRUE),
+        totalPts = sum(Scoring_Pts, na.rm = TRUE),
+        avgCatchPct = mean(Receiving_Ctch., na.rm = TRUE),
+        `avgY/Tgt` = mean(Receiving_Y.Tgt, na.rm = TRUE),
+        totalFl = sum(Fumbles_FL, na.rm = TRUE)
+      )
+  }
+    else if (position %in% c("DL", "LB", "DB")) {
     data <- data %>%
       group_by(sleeper_player_id) %>%
       reframe(
