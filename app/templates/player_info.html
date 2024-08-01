@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+    <h1>{{ player.player_name }}</h1>
+    <p>Rostered by: {{ player.owner }}</p>
+    <p>Position:
+    {% for position in player.details.fantasy_positions %}
+        {{ position }}
+    {% endfor %}
+    </p>
+    <p>Height: {{ player.details.height }}</p>
+    <p>Weight: {{ player.details.weight }}</p>
+    <h2>Stats</h2>
+    {% for year, table in player_stat_tables.items() %}
+        <h3>{{ year }}</h3>
+        {{ table | safe }}
+    {% endfor %}
+{% endblock %}
