@@ -165,7 +165,8 @@ class NFLStatsDatabase:
             'Def Interceptions_Yds': league.scoring_settings.int_ret_yd,
             "blocked_kick": league.scoring_settings.idp_blk_kick,  # PFR doesn't include this information. Maybe someday.
             'Fumbles_FF': league.scoring_settings.idp_ff,
-            'Fumbles_FR': league.scoring_settings.idp_fum_rec
+            'Fumbles_FR': league.scoring_settings.idp_fum_rec,
+            'Scoring_2PM': league.scoring_settings.pass_2pt  # PFR doesn't specify if a 2 pt conversion was a pass or rush, but sleeper scores for it. Assume pass.
         }
 
     def calculate_fantasy_points(self):
