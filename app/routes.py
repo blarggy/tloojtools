@@ -10,6 +10,82 @@ def load_database():
     return database_data
 
 
+def reformat_player_data(player_dataframe):
+    # handle whitespace
+    player_dataframe = player_dataframe.fillna('')
+    player_dataframe = player_dataframe.replace('null', '')
+    # cleanup data
+    player_dataframe['G#'] = player_dataframe['G#'].apply(lambda x: int(float(x)) if x != '' else x)
+    player_dataframe['Week'] = player_dataframe['Week'].apply(lambda x: int(float(x)) if x != '' else x)
+    # resolve column names
+    player_dataframe.columns = player_dataframe.columns.str.replace('Rk', 'Index') \
+        .str.replace('G#', 'Game') \
+        .str.replace('Tm', 'Team') \
+        .str.replace('1', '') \
+        .str.replace('Opp', 'Opponent') \
+        .str.replace('GS', 'Starter') \
+        .str.replace('Off. Snaps_Num', '# Offensive Snaps') \
+        .str.replace('Off. Snaps_Pct', '% Offensive Snaps') \
+        .str.replace('Def. Snaps_Pct', '% Defensive Snaps') \
+        .str.replace('Def. Snaps_Num', '# Defensive Snaps') \
+        .str.replace('ST Snaps_Num', '# Special Teams Snaps') \
+        .str.replace('ST Snaps_Pct', '% Special Teams Snaps') \
+        .str.replace('Receiving_Tgt', 'Receiving Targets') \
+        .str.replace('Receiving_Yds', 'Receiving Yards') \
+        .str.replace('Receiving_Y/R', 'Receiving Yards/Reception') \
+        .str.replace('Receiving_TD', 'Receiving TD') \
+        .str.replace('Receiving_Ctch%', 'Receiving Catch %') \
+        .str.replace('Receiving_Y/Tgt', 'Receiving Yards/Target') \
+        .str.replace('Kick Returns_Rt', 'Kick Return Tries') \
+        .str.replace('Kick Returns_Yds', 'Kick Return Yards') \
+        .str.replace('Kick Returns_Y/R', 'Kick Return Yards/Return') \
+        .str.replace('Kick Returns_TD', 'Kick Return TD') \
+        .str.replace('Scoring_2PM', '2pt Conversion') \
+        .str.replace('Scoring_TD', 'Scoring TD (any)') \
+        .str.replace('Scoring_Pts', 'Points Scored') \
+        .str.replace('Fumbles_Fmb', 'Fumbles') \
+        .str.replace('Fumbles_FL', 'Fumbles Lost') \
+        .str.replace('Fumbles_FF', 'Fumbles Forced') \
+        .str.replace('Fumbles_FR', 'Fumbles Recovered') \
+        .str.replace('Fumbles_Yds', 'Fumble Yards Returned') \
+        .str.replace('Fumbles_TD', 'Fumble Return TD') \
+        .str.replace('fantasy_points', 'Fantasy Points') \
+        .str.replace('Sk', 'Sacks') \
+        .str.replace('Tackles_Solo', 'Solo Tackles') \
+        .str.replace('Tackles_Ast', 'Assisted Tackles') \
+        .str.replace('Tackles_Comb', 'Combined Tackles') \
+        .str.replace('Tackles_TFL', 'Tackles for Loss') \
+        .str.replace('Tackles_QBHits', 'QB Hits') \
+        .str.replace('Def Interceptions_Int', 'Def. Interceptions') \
+        .str.replace('Def Interceptions_Yds', 'Def. Interception Yards') \
+        .str.replace('Def Interceptions_TD', 'Def. Interception TD') \
+        .str.replace('Def Interceptions_PD', 'Passes Defended') \
+        .str.replace('Rushing_Att', 'Rush Attempts') \
+        .str.replace('Rushing_Yds', 'Rush Yards') \
+        .str.replace('Rushing_Y/A', 'Rush Yards/Attempt') \
+        .str.replace('Rushing_TD', 'Rush TD') \
+        .str.replace('Passing_Cmp', 'Pass Completions') \
+        .str.replace('Passing_Att', 'Pass Attempts') \
+        .str.replace('Passing_Cmp%', 'Pass Completion %') \
+        .str.replace('Passing_Yds', 'Passing Yards') \
+        .str.replace('Passing_TD', 'Passing TD') \
+        .str.replace('Passing_Int', 'Passing INT') \
+        .str.replace('Passing_Rate', 'Pass Rate') \
+        .str.replace('Passing_Sk', 'Sacked') \
+        .str.replace('Passing_Yds.1', 'Yards Lost to Sacks') \
+        .str.replace('Passing_Y/A', 'Pass Yards/Attempt') \
+        .str.replace('Passing_AY/A', 'Adjusted Pass Yards/Attempt*') \
+        .str.replace('Punt Returns_Ret', 'Punt Return Tries') \
+        .str.replace('Punt Returns_Yds', 'Punt Return Yards') \
+        .str.replace('Punt Returns_Y/R', 'Punt Return Yards/Return') \
+        .str.replace('Punt Returns_TD', 'Punt Return TD') \
+        .str.replace('Scoring_Sfty', 'Safety')
+    # Passing_AY/A = Pass yds + 20 * Passing TD - 45 * Interceptions / Passes Attempted
+    # Remove the index column
+    player_dataframe = player_dataframe.iloc[:, 1:]
+    return player_dataframe
+
+
 def get_player_info(player_id):
     database_data = load_database()
     player_query = {}
@@ -28,7 +104,8 @@ def get_player_info(player_id):
                     player_stats = player_details[1]
                     for year, stats in player_stats.items():
                         player_df = pd.DataFrame(stats)
-                        player_tables[year] = player_df.to_html(classes='table table-striped', index=True)
+                        player_df = reformat_player_data(player_df)
+                        player_tables[year] = player_df.to_html(classes='table table-striped', index=False)
     return player_query, player_tables
 
 
