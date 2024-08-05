@@ -4,8 +4,8 @@
     <p>Rostered by: {{ player.owner }}</p>
     <p>Position:
     {% for position in player.details.fantasy_positions %}
-    {% endfor %}
         {{ position }}
+    {% endfor %}
     </p>
     <p>Team: {{ player.details.team }}</p>
     <p>Height: {{ player.details.height }}</p>
