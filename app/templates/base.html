@@ -7,11 +7,23 @@
         {% else %}
         <title>Welcome to tloojtools!</title>
         {% endif %}
+        <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" rel="stylesheet">
     </head>
     <body>
-        <div>tloojtools: <a href="/index">Home</a></div>
-        <hr>
+        <div>
+        {% if not breadcrumbs %}
+            <a href="/index">Home</a>
+        {% else %}
+            {% for breadcrumb in breadcrumbs %}
+                <a href="{{ breadcrumb.url }}">{{ breadcrumb.name }}</a>
+                {% if not loop.last %} &gt; {% endif %}
+            {% endfor %}
+        {% endif %}
+        </div>
         {% block content %}{% endblock %}
+        <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"></script>
+        <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
     </body>
 </html>
 

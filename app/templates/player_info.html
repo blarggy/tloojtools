@@ -1,17 +1,25 @@
 {% extends "base.html" %}
 {% block content %}
-    <h1>{{ player.player_name }}</h1>
+    <h1>{{ player.player_name }} #{{ player.details.number }}</h1>
     <p>Rostered by: {{ player.owner }}</p>
     <p>Position:
     {% for position in player.details.fantasy_positions %}
-        {{ position }}
     {% endfor %}
+        {{ position }}
     </p>
+    <p>Team: {{ player.details.team }}</p>
     <p>Height: {{ player.details.height }}</p>
     <p>Weight: {{ player.details.weight }}</p>
     <h2>Stats</h2>
     {% for year, table in player_stat_tables.items() %}
-        <h3>{{ year }}</h3>
-        {{ table | safe }}
+        {% set sanitized_year = year.replace(' ', '_') %}
+        <h3>
+            <a class="btn btn-primary" data-toggle="collapse" href="#collapse{{ sanitized_year }}" role="button" aria-expanded="false" aria-controls="collapse{{ sanitized_year }}">
+                {{ year }}
+            </a>
+        </h3>
+        <div class="collapse" id="collapse{{ sanitized_year }}">
+            {{ table | safe }}
+        </div>
     {% endfor %}
 {% endblock %}

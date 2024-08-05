@@ -14,7 +14,7 @@ def reformat_player_data(player_dataframe):
     # handle whitespace
     player_dataframe = player_dataframe.fillna('')
     player_dataframe = player_dataframe.replace('null', '')
-    # cleanup data
+    # Cast some columns to appropriate types
     player_dataframe['G#'] = player_dataframe['G#'].apply(lambda x: int(float(x)) if x != '' else x)
     player_dataframe['Week'] = player_dataframe['Week'].apply(lambda x: int(float(x)) if x != '' else x)
     # resolve column names
@@ -96,6 +96,7 @@ def get_player_info(player_id):
             for player_name, player_details in player_data.items():
                 if player_details[0]['player_id'] == player_id:
                     player_query.update({'owner': roster['team_name']})
+                    player_query.update({'owner_id': roster['owner_id']})
                     player_query.update({
                         'player_name': player_name,
                         'details': player_details[0],
@@ -112,11 +113,6 @@ def get_player_info(player_id):
 @app.route('/')
 @app.route('/index')
 def index():
-    # load in json/2023_gamelogs_leagueid_1075600889420845056.json and extract display_name and team_name
-    # extract player_name
-    # for each player_name, display_name, team_name, create a dictionary and append to a list
-    # pass the list to the html
-
     database_data = load_database()
     league = []
     for roster in database_data:
@@ -126,6 +122,16 @@ def index():
         league.append(team)
 
     return render_template('index.html', title='Home', league_info=league)
+
+
+def generate_breadcrumbs(current_page, crumbs=None):
+    breadcrumbs = [{'name': 'Home', 'url': '/index'}]
+    if current_page == 'team':
+        breadcrumbs.append({'name': crumbs['team_name'], 'url': f'/team/{crumbs["owner_id"]}'})
+    elif current_page == 'player':
+        breadcrumbs.append({'name': crumbs['team_name'], 'url': f'/team/{crumbs["owner_id"]}'})
+        breadcrumbs.append({'name': crumbs['player_name'], 'url': f'/player/{crumbs["player_id"]}'})
+    return breadcrumbs
 
 
 @app.route('/team/<int:owner_id>')
@@ -146,7 +152,9 @@ def team_info(owner_id):
                         'player_id': player_details[0]['player_id']
                     })
     if selected_team:
-        return render_template('team_info.html', team=selected_team, roster=roster)
+        crumbs = {"team_name": selected_team['team_name'], "owner_id": selected_team['owner_id']}
+        breadcrumbs = generate_breadcrumbs('team', crumbs=crumbs)
+        return render_template('team_info.html', team=selected_team, roster=roster, breadcrumbs=breadcrumbs)
     else:
         return "Team not found", 404
 
@@ -158,6 +166,8 @@ def player_info(player_id):
     if player_data:
         print(f"Player data: {player_data}")
         print(f"Player stat table: {player_stat_tables}")
-        return render_template('player_info.html', player=player_data, player_stat_tables=player_stat_tables)
+        crumbs = {"team_name": player_data['owner'], "owner_id": player_data['owner_id'], "player_name": player_data['player_name'], "player_id": player_id}
+        breadcrumbs = generate_breadcrumbs('player', crumbs=crumbs)
+        return render_template('player_info.html', player=player_data, player_stat_tables=player_stat_tables, breadcrumbs=breadcrumbs)
     else:
         return "Player not found", 404
