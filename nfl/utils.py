@@ -10,10 +10,14 @@ from nfl.constants import APP_LOG_DIRECTORY
 
 
 def is_file_older_than_one_week(file_path):
-    current_time = datetime.datetime.now()
-    creation_time = datetime.datetime.fromtimestamp(os.path.getctime(file_path))
+    current_time = datetime.now()
+    creation_time = datetime.fromtimestamp(os.path.getmtime(file_path))
     file_age_days = (current_time - creation_time).days
-    return file_age_days > 7
+    logging.info(f"{file_path=} is {file_age_days=}")
+    if file_age_days > 7:
+        return True
+    else:
+        return False
 
 
 def validate_file(file_name):

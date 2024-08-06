@@ -8,91 +8,41 @@ import time
 import pandas as pd
 from sleeper.model import League
 
-from nfl.constants import DATABASE_DIRECTORY, LEAGUE_ID
-import nfl_data_py as nfl
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-
-from nfl.utils import is_file_older_than_one_week
-from nfl.utils import validate_file
 from nfl.utils import create_backup
 from nfl.utils import logging_steup
 
+#TODO: Handle multiple years worth of stats as separate files
 
 class Stats:
     """
-    Instantiate with year, position (either "passing", "scrimmage" or "defense")
+    Base class for NFL player stats.
+
+    Attributes:
+        year (int): The year for which stats are being fetched.
+        pfr_player_id (str): The Pro-Football-Reference player ID.
+        PFR_STATS_URL (str): The URL template for fetching player stats.
     """
 
-    def __init__(self, year, position=None, pfr_player_id=None):
+    def __init__(self, year, pfr_player_id=None):
+        """
+        Initializes the Stats class with the given year and player ID.
+
+        Args:
+            year (int): The year for which stats are being fetched.
+            pfr_player_id (str, optional): The Pro-Football-Reference player ID. Defaults to None.
+        """
         self.year = year
-        self.position = position
         self.pfr_player_id = pfr_player_id
         self.PFR_STATS_URL = f"https://www.pro-football-reference.com/years/{self.year}/{self.position}.htm"
 
-    def create_stats(self, validate=True):
-        def seasonal_data():
-            url = self.PFR_STATS_URL
-            """
-            Without Selenium
-            """
-            # df = pd.read_html(url)[0]
-            # if self.position != "passing":
-            #     df[('Unnamed: 1_level_0', 'Player')] = df[('Unnamed: 1_level_0', 'Player')].str.replace('*', '').str.replace('+', "")
-            # else:
-            #     df['Player'] = df['Player'].str.replace('*', '').str.replace('+', "")
-
-            """
-            With Selenium
-            """
-            driver = webdriver.Chrome()
-            driver.get(url)
-            share_export = WebDriverWait(driver, 10).until(
-                EC.element_to_be_clickable((By.XPATH, "//span[text()='Share & Export']"))
-            )
-            share_export.click()
-            get_csv_button = WebDriverWait(driver, 10).until(
-                EC.element_to_be_clickable(
-                    (By.XPATH, "//button[@tip='Get a link directly to this table on this page']"))
-            )
-            get_csv_button.click()
-            if self.position == "passing":
-                csv_type = "csv_passing"
-                merge_headers = False
-            elif self.position == "scrimmage":
-                csv_type = "csv_receiving_and_rushing"
-                merge_headers = True
-            elif self.position == "defense":
-                csv_type = "csv_defense"
-                merge_headers = True
-            pre_element = WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.ID, csv_type))
-            )
-            pre_text = pre_element.get_attribute('innerText')
-            csv_data = pre_text.split('--- When using SR data, please cite us and provide a link and/or a mention.')[1]
-            if merge_headers:
-                df = pd.read_csv(io.StringIO(csv_data), header=[0, 1])
-            else:
-                df = pd.read_csv(io.StringIO(csv_data))
-            df = df.fillna("0")
-            df = nfl.clean_nfl_data(df)
-            df.to_json(file_name, orient='records', indent=4)
-            return df
-
-        file_name = f"{DATABASE_DIRECTORY}/nfl_stats_{self.position}_{self.year}.json"
-        if validate and validate_file(file_name):
-            if is_file_older_than_one_week(file_name):
-                seasonal_data()
-            else:
-                print(f"{file_name} is fresh. Skipping data import.")
-                df = pd.read_json(file_name)
-                return df
-        else:
-            seasonal_data()
-
     def gamelogs_data(self):
+        """
+        Fetches game logs data for the player for the specified year.
+
+        Returns:
+            DataFrame: A pandas DataFrame containing the gamelogs data.
+            None: If the data could not be fetched after multiple attempts.
+        """
         year = self.year
         pfr_player_id = self.pfr_player_id
         url = f"https://www.pro-football-reference.com/players/{pfr_player_id[0]}/{pfr_player_id}/gamelog/{year}/"
@@ -249,12 +199,6 @@ class NFLStatsDatabase:
 
         with open(self.database_file, 'w') as file:
             json.dump(database_data, file, indent=4)
-
-    def calculate_seasonal_impact(self):
-        """
-        Calculate the impact of a player's stats on their team (assumes 'seasonal' database)
-        """
-        pass
 
 
 if __name__ == '__main__':
