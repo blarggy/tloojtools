@@ -1,4 +1,5 @@
 application_logs/*
 data/*
+data/transactions/*
 json/*
 backups/*

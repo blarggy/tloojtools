@@ -8,10 +8,10 @@ import time
 import pandas as pd
 from sleeper.model import League
 
+from nfl.constants import GLOBAL_NFL_PLAYER_ID_FILE
 from nfl.utils import create_backup
 from nfl.utils import logging_steup
 
-#TODO: Handle multiple years worth of stats as separate files
 
 class Stats:
     """
@@ -76,6 +76,47 @@ class Stats:
         print(f"Failed to retrieve gamelogs after {max_retries} attempts")
         return None
 
+    @staticmethod
+    def fetch_game_log_data(owner_data, player_data, player_id, year, player_id_table):
+        """
+        Gets the gamelogs data for each player from PFR on the roster and adds it to the owner_data dictionary.
+        :param owner_data: dict w/ keys: owner_id, display_name, team_name, players_data (list)
+        :param player_data: All NFL player data from sleeper's api as json object
+        :param player_id: Sleeper player ID
+        :param year: list of years to collect data for
+        :param player_id_table: from nfl api for mapping IDs to names
+        :return:
+        """
+        if player_id in player_data:
+            player_name = player_id_table.loc[player_id_table['sleeper_id'] == int(player_id), 'name'].values[0]
+            pfr_player_id = player_id_table.loc[player_id_table['sleeper_id'] == int(player_id), 'pfr_id'].values[0]
+            player_info = player_data[player_id]
+            if type(pfr_player_id) is float:
+                logging.error(f"{pfr_player_id=} is not in the {GLOBAL_NFL_PLAYER_ID_FILE} file. Trying to find the gamelogs page by hand...")
+                first_name = player_info["first_name"]
+                last_name = player_info["last_name"]
+                pfr_player_id_chars = last_name[:4] + first_name[:2]
+                pfr_player_id_char_list = [pfr_player_id_chars + str(i).zfill(2) for i in range(10)]
+                logging.info(f"{pfr_player_id_char_list=}")
+                for id_no in pfr_player_id_char_list:
+                    try:
+                        game_log_data = Stats(year=year, pfr_player_id=id_no).gamelogs_data()
+                        time.sleep(5)  # respectfully wait
+                        break
+                    except Exception as e:
+                        logging.error(f"The URL for {id_no} is not valid. {e=}")
+                        print(f'URL for {id_no} is not valid, trying next...')
+                        time.sleep(1)
+            else:
+                game_log_data = Stats(year=year, pfr_player_id=pfr_player_id).gamelogs_data()
+                time.sleep(5)  # respectfully wait
+            # some of the columns are tuples, convert them to lists for json serialization
+            game_log_data = game_log_data.apply(lambda col: col.map(lambda x: list(x) if isinstance(x, tuple) else x))
+            game_log_data.columns = ['_'.join(map(str, col)).strip() for col in game_log_data.columns.values]
+            stats = {f"{year}_stats": game_log_data.to_dict()}
+            owner_data["players_data"].append({player_name: [player_info, stats]})
+            return owner_data
+
 
 class NFLStatsDatabase:
     """
@@ -131,6 +172,7 @@ class NFLStatsDatabase:
                         player_id = stats[0]['player_id']
                         # Use a unique key to identify each player to avoid situations where players have identical names
                         unique_key = f"{player_name}_{player_id}"
+                        #TODO: This is where the logic needs to be different to handle multiple years of stats
                         player_stats = stats[1]
                         player_data_dict.setdefault(unique_key, [])
                         for year, stats_table in player_stats.items():
