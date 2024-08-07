@@ -8,6 +8,9 @@ import time
 import pandas as pd
 from sleeper.model import League
 
+import re
+
+from nfl import utils
 from nfl.constants import GLOBAL_NFL_PLAYER_ID_FILE
 from nfl.utils import create_backup
 from nfl.utils import logging_steup
@@ -20,38 +23,48 @@ class Stats:
     Attributes:
         year (int): The year for which stats are being fetched.
         pfr_player_id (str): The Pro-Football-Reference player ID.
-        PFR_STATS_URL (str): The URL template for fetching player stats.
     """
 
-    def __init__(self, year, pfr_player_id=None):
+    def __init__(self, year=None, pfr_player_id=None):
         """
         Initializes the Stats class with the given year and player ID.
 
         Args:
             year (int): The year for which stats are being fetched.
             pfr_player_id (str, optional): The Pro-Football-Reference player ID. Defaults to None.
+            PFR_PLAYER_PAGE_URL (str): The URL template for fetching base player page.
         """
         self.year = year
         self.pfr_player_id = pfr_player_id
-        self.PFR_STATS_URL = f"https://www.pro-football-reference.com/years/{self.year}/{self.position}.htm"
 
-    def gamelogs_data(self):
+    def get_years_of_service(self, rookie_year=None):
         """
-        Fetches game logs data for the player for the specified year.
-
-        Returns:
-            DataFrame: A pandas DataFrame containing the gamelogs data.
-            None: If the data could not be fetched after multiple attempts.
+        Get the years of service for a player.
+        return: list -> years of service
         """
-        year = self.year
-        pfr_player_id = self.pfr_player_id
-        url = f"https://www.pro-football-reference.com/players/{pfr_player_id[0]}/{pfr_player_id}/gamelog/{year}/"
-        logging.info(f"Getting gamelogs for {url=}")
-        print(f"Getting gamelogs for {url=}")
+        pfr_player_page_url = f"https://www.pro-football-reference.com/players/{self.pfr_player_id[0]}/{self.pfr_player_id}.htm"
+        logging.info(f"Getting years of service for {pfr_player_page_url=}")
+        df = self.query_pfr(pfr_player_page_url)
+        logging.debug(f"get_years_of_service() {df=}")
+        if df is not None:
+            if ('Unnamed: 0_level_0', 'Year') in df.columns:
+                years_of_service = df[('Unnamed: 0_level_0', 'Year')].tolist()
+            elif 'Year' in df.columns:
+                years_of_service = df['Year'].tolist()
+            else:
+                years_of_service = []
 
-        max_retries = 5
-        retry_delay = 5  # seconds
+            # Extract only numeric parts of the year values and filter out data that isn't a year
+            years_of_service = [re.sub(r'\D', '', item) for item in years_of_service if re.sub(r'\D', '', item).isdigit() and int(re.sub(r'\D', '', item)) > 1000]
+            logging.info(f"Years of service for {self.pfr_player_id}: {years_of_service}")
+            if rookie_year:
+                if years_of_service[0] != rookie_year:
+                    raise ValueError(f"Rookie year {rookie_year} does not match the first year of service {years_of_service[0]} for {self.pfr_player_id}")
+            return years_of_service
+        return []
 
+    @staticmethod
+    def query_pfr(url, max_retries=5, retry_delay=5):
         for attempt in range(max_retries):
             try:
                 response = requests.get(url)
@@ -66,55 +79,172 @@ class Stats:
                     logging.error(f"HTTP error {response.status_code} occurred: {http_err}. Retrying {attempt + 1}/{max_retries}")
                     print(f"HTTP error {response.status_code} occurred: {http_err}. Retrying {attempt + 1}/{max_retries}")
                     time.sleep(retry_delay)
+                elif response.status_code == 404:
+                    logging.error(f"HTTP error {response.status_code} occurred: {http_err}. {url=} is not valid.")
+                    break
+                elif response.status_code == 429:
+                    logging.error(f"HTTP error {response.status_code} occurred: {http_err}. Too many requests. Wait for a while.")
+                    break
+
+            except ValueError as val_err:
+                logging.error(f"query_pfr() Value error occurred: {val_err}. {url=} contains no tables.")
+                df = pd.DataFrame()
+                return df
 
             except KeyboardInterrupt:
                 logging.info("Process interrupted by user.")
                 print("Process interrupted by user.")
                 return None
 
-        logging.error(f"Failed to retrieve gamelogs after {max_retries} attempts")
-        print(f"Failed to retrieve gamelogs after {max_retries} attempts")
+        logging.error(f"Failed to retrieve data from {url} {response.status_code}")
+        print(f"Failed to retrieve data from {url} {response.status_code}")
         return None
 
+    def gamelogs_data(self, rookie_year=None):
+        """
+        Fetches game logs data for the player for the specified year.
+
+        Returns:
+            DataFrame: A pandas DataFrame containing the gamelogs data.
+            None: If the data could not be fetched after multiple attempts.
+        """
+        year = self.year
+        pfr_player_id = self.pfr_player_id
+        url = f"https://www.pro-football-reference.com/players/{pfr_player_id[0]}/{pfr_player_id}/gamelog/{year}/"
+        logging.info(f"Getting gamelogs for {url=}")
+        print(f"Getting gamelogs for {url=}")
+
+        return self.query_pfr(url)
+
     @staticmethod
-    def fetch_game_log_data(owner_data, player_data, player_id, year, player_id_table):
+    def fetch_game_log_data(owner_data, player_data, player_id, player_id_table, update=False, update_years=None):
         """
         Gets the gamelogs data for each player from PFR on the roster and adds it to the owner_data dictionary.
         :param owner_data: dict w/ keys: owner_id, display_name, team_name, players_data (list)
         :param player_data: All NFL player data from sleeper's api as json object
         :param player_id: Sleeper player ID
-        :param year: list of years to collect data for
         :param player_id_table: from nfl api for mapping IDs to names
+        :param update: bool, update existing data
+        :param update_years: str, int or list, List of year(s) to update
         :return:
         """
+        if update_years:
+            if type(update_years) is str:
+                update_years = [update_years]
+            if type(update_years) is int:
+                update_years = [str(update_years)]
+
+        def normalize_game_log_data(game_log_data, year):
+            """
+            Normalizes the game log data by converting tuples to lists and renaming columns for json serialization
+            Args:
+                game_log_data (pd.DataFrame): The game log data to be normalized.
+                year (str): The year for which the data is being normalized.
+            Returns:
+                dict: The normalized game log data.
+            """
+            game_log_data = game_log_data.apply(lambda col: col.map(lambda x: list(x) if isinstance(x, tuple) else x))
+            game_log_data.columns = ['_'.join(map(str, col)).strip() for col in game_log_data.columns.values]
+            stats = {f"{year}_stats": game_log_data.to_dict()}
+            return stats
+
+        def update_stats(owner_data, player_name, stats):
+            """
+            Replaces or appends an item in the list dictionary with {player_name: [stats]}.
+
+            Args:
+                owner_data (dict): The owner data dictionary containing the players_data list.
+                player_name (str): The name of the player.
+                stats (dict): The stats to be added for the player.
+
+            Returns:
+                None
+            """
+            for i, item in enumerate(owner_data):
+                if isinstance(item, dict) and player_name in item:
+                    player_stats = item[player_name]
+                    year_key = list(stats.keys())[0]
+                    for stat in player_stats:
+                        if year_key in stat:
+                            stat[year_key] = stats[year_key]
+                            logging.info(f'Updating stats for {player_name} for {year_key}')
+                            break
+                    else:
+                        player_stats.append(stats)
+                        logging.info(f'Appending stats for {player_name} for {year_key}')
+                    break
+
+        def sort_players_data(unsorted_data):
+            def sort_key(item):
+                key = list(item.keys())[0]
+                if key == "hashtag":
+                    return 0, key
+                elif key.endswith("_stats"):
+                    year = int(key.split("_")[0])
+                    return 1, year
+                else:
+                    return 2, key
+
+            unsorted_data.sort(key=sort_key)
+
         if player_id in player_data:
             player_name = player_id_table.loc[player_id_table['sleeper_id'] == int(player_id), 'name'].values[0]
             pfr_player_id = player_id_table.loc[player_id_table['sleeper_id'] == int(player_id), 'pfr_id'].values[0]
             player_info = player_data[player_id]
+            # In the event a player's sleeper ID isn't in the player_id_table, try to guess the player's gamelogs page.
             if type(pfr_player_id) is float:
                 logging.error(f"{pfr_player_id=} is not in the {GLOBAL_NFL_PLAYER_ID_FILE} file. Trying to find the gamelogs page by hand...")
                 first_name = player_info["first_name"]
                 last_name = player_info["last_name"]
+                # Use the player's rookie year to check if I found the right player page...
+                rookie_year = player_info["metadata"]["rookie_year"]
                 pfr_player_id_chars = last_name[:4] + first_name[:2]
                 pfr_player_id_char_list = [pfr_player_id_chars + str(i).zfill(2) for i in range(10)]
                 logging.info(f"{pfr_player_id_char_list=}")
+                valid_url_found = False  # flag to stop checking once a valid URL is found
                 for id_no in pfr_player_id_char_list:
-                    try:
-                        game_log_data = Stats(year=year, pfr_player_id=id_no).gamelogs_data()
-                        time.sleep(5)  # respectfully wait
+                    if valid_url_found:
                         break
+                    try:
+                        # This query is needed to see if this is the right player page.
+                        years = Stats(pfr_player_id=id_no).get_years_of_service(rookie_year=rookie_year)
+                        valid_url_found = True
+                        if update_years:
+                            years = update_years
+                        for year in years:
+                            game_log_data = Stats(year=int(year), pfr_player_id=id_no).gamelogs_data()
+                            stats = normalize_game_log_data(game_log_data, year)
+                            if update:
+                                update_stats(owner_data["players_data"], player_name, stats)
+                            else:
+                                owner_data["players_data"].append({player_name: [stats]})
+                            time.sleep(5)  # respectfully wait
                     except Exception as e:
                         logging.error(f"The URL for {id_no} is not valid. {e=}")
                         print(f'URL for {id_no} is not valid, trying next...')
                         time.sleep(1)
+            # The player's sleeper ID is in the player_id_table, use it to get the player's gamelogs pages.
             else:
-                game_log_data = Stats(year=year, pfr_player_id=pfr_player_id).gamelogs_data()
-                time.sleep(5)  # respectfully wait
-            # some of the columns are tuples, convert them to lists for json serialization
-            game_log_data = game_log_data.apply(lambda col: col.map(lambda x: list(x) if isinstance(x, tuple) else x))
-            game_log_data.columns = ['_'.join(map(str, col)).strip() for col in game_log_data.columns.values]
-            stats = {f"{year}_stats": game_log_data.to_dict()}
-            owner_data["players_data"].append({player_name: [player_info, stats]})
+                if update_years:
+                    years = update_years
+                else:
+                    years = Stats(pfr_player_id=pfr_player_id).get_years_of_service()
+                for year in years:
+                    game_log_data = Stats(year=int(year), pfr_player_id=pfr_player_id).gamelogs_data()
+                    stats = normalize_game_log_data(game_log_data, year)
+                    if update:
+                        update_stats(owner_data["players_data"], player_name, stats)
+                    else:
+                        owner_data["players_data"].append({player_name: [stats]})
+                    time.sleep(5)  # respectfully wait
+
+            if not update:
+                owner_data["players_data"].insert(0, {player_name: [player_info]})
+
+            for player in owner_data["players_data"]:
+                for player_name, data in player.items():
+                    sort_players_data(data)
+
             return owner_data
 
 
@@ -245,3 +375,22 @@ class NFLStatsDatabase:
 
 if __name__ == '__main__':
     logging_steup()
+    with open('../data/test.json', 'r') as file:
+        database = json.load(file)
+    with open('../json/player_data.json', 'r') as file:
+        sleeper_player_data = json.load(file)
+    with open('../json/player_id_table.csv', 'r') as file:
+        player_id_table = pd.read_csv(file)
+    for roster in database:
+        for player in roster['players_data']:
+            for player_name, player_data in player.items():
+                player_id = player_data[0]['player_id']
+                Stats.fetch_game_log_data(owner_data=roster, player_data=sleeper_player_data, player_id=player_id, player_id_table=player_id_table, update=True)
+
+    with open('../data/test2.json', "w") as file:
+        json.dump(database, file, indent=4)
+
+    # clean up "Unnamed" columns the json file which comes from PFR
+    utils.rename_keys_in_json('../data/test2.json')
+    # test = Stats(pfr_player_id="WardCh00")
+    # print(Stats.get_years_of_service(test))

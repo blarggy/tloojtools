@@ -8,12 +8,13 @@ from sleeper.model import (
     League,
     Roster,
     Player,
-    User, ScoringSettings,
+    User,
+    ScoringSettings,
 )
 import json
 import os
 
-from nfl.utils import logging_steup, is_file_older_than_one_week
+from nfl.utils import logging_steup, is_file_older_than_one_week, create_backup
 from nfl.json_handler import CustomJSONEncoder
 from nfl.constants import LEAGUE_ID, GLOBAL_NFL_PLAYER_ID_FILE, TRANSACTIONS_DIRECTORY
 from nfl.constants import DATABASE_DIRECTORY
@@ -21,7 +22,6 @@ from nfl.constants import GLOBAL_SLEEPER_PLAYER_DATA_FILE
 from nfl.utils import rename_keys_in_json
 import nfl.nfl_api as nfl_api
 import nfl.nfl_stats as nfl_stats
-from nfl.nfl_stats import NFLStatsDatabase
 import pandas as pd
 
 #TODO: create update_league_database() to check for new players and update the database
@@ -51,13 +51,12 @@ class FantasyLeagueDatabase:
         logging.info(f"{player_data_file=} generated")
 
     @staticmethod
-    def process_roster(roster, users, player_data, year, player_id_table, get_logs=False):
+    def process_roster(roster, users, player_data, player_id_table, get_logs=False):
         """
         Processes the roster data and returns a dictionary with the owner's display name, team name, and players data.
         :param roster: from league object
         :param users: from league object
         :param player_data: All NFL player data from sleeper's api as json object
-        :param year: list of years to collect data for
         :param player_id_table: from nfl api for mapping IDs to names
         :param get_logs: Bool, set True to Query PFR's site to get gamelogs data. For false just return list of Sleeper player IDs
         :return: dict, owner_data
@@ -72,7 +71,7 @@ class FantasyLeagueDatabase:
                 }
                 if get_logs:
                     for player_id in roster.players:
-                        nfl_stats.Stats.fetch_game_log_data(owner_data, player_data, player_id, year, player_id_table)
+                        nfl_stats.Stats.fetch_game_log_data(owner_data, player_data, player_id, player_id_table)
                     return owner_data
                 else:
                     for player_id in roster.players:
@@ -111,15 +110,15 @@ class FantasyLeagueDatabase:
 
         return rosters, users, player_data, player_id_table
 
-    def diff_rostered_players(self, old_database, years):
+    def diff_rostered_players(self, old_database):
         """
-        Returns data about players that have been transacted on or off a roster. Creates a transactions file in the transactions directory.
+        Pass in the path to an existing database file, returns a dictionary of players that have been added or dropped from a roster since the database was generated
         :return: dict, change_owner_data
         """
         rosters, users, player_data, player_id_table = FantasyLeagueDatabase.initialize_league_data(self.league)
         new_owner_data = []
         for roster in rosters:
-            _new_owner_data = FantasyLeagueDatabase.process_roster(roster, users, player_data, years, player_id_table)
+            _new_owner_data = FantasyLeagueDatabase.process_roster(roster, users, player_data, player_id_table)
             if _new_owner_data:
                 new_owner_data.append(_new_owner_data)
         with open(old_database, "r") as file:
@@ -153,7 +152,16 @@ class FantasyLeagueDatabase:
                                 _change_owner_data["players"].append(new_player_id)
             change_owner_data.append(_change_owner_data)
 
-        # Save the transactions to a file
+        return change_owner_data
+
+    def save_transactions_to_file(self, old_database):
+        """
+        Saves the transactions data to a file in the 'transactions' directory.
+        :param old_database: path to old database file
+        :return:
+        """
+        player_data = FantasyLeagueDatabase.initialize_league_data(self.league)[2]
+        change_owner_data = self.diff_rostered_players(old_database)
         roster_changes = []
         for roster in change_owner_data:
             for player_id in roster['players']:
@@ -195,28 +203,83 @@ class FantasyLeagueDatabase:
 
         return change_owner_data
 
-    def generate_league_database(self, years):
+    def generate_league_database(self):
         """
         Generates a .json file containing relevant roster information for your league. Make sure there's a player database file to read from, run generate_player_database() first.
-        :param years: list, select a year to gather data from (or just one year). Each year generates a separate database.
         """
         rosters, users, player_data, player_id_table = FantasyLeagueDatabase.initialize_league_data(self.league)
 
         final_data = []
-        for year in years:
-            logging.info(f'Generating league database file for {year=}')
+        logging.info(f'Generating league database file for {self.league_id=}')
 
-            for roster in rosters:
-                owner_data = FantasyLeagueDatabase.process_roster(roster, users, player_data, year, player_id_table, get_logs=True)
-                if owner_data:
-                    final_data.append(owner_data)
+        for roster in rosters:
+            owner_data = FantasyLeagueDatabase.process_roster(roster, users, player_data, player_id_table, get_logs=True)
+            if owner_data:
+                final_data.append(owner_data)
 
-            league_database_file = os.path.join(DATABASE_DIRECTORY, f"leagueid_{LEAGUE_ID}.json")
-            with open(league_database_file, "w") as file:
-                json.dump(final_data, file, indent=4)
+        league_database_file = os.path.join(DATABASE_DIRECTORY, f"leagueid_{LEAGUE_ID}.json")
+        with open(league_database_file, "w") as file:
+            json.dump(final_data, file, indent=4)
 
-            # clean up "Unnamed" columns the json file which comes from PFR
-            rename_keys_in_json(league_database_file)
+        # clean up "Unnamed" columns the json file which comes from PFR
+        rename_keys_in_json(league_database_file)
+
+    def update_league_database(self, database_file):
+        """
+        Updates the league database file for the given year. Make sure there's a player database file to read from, run generate_player_database() first.
+        """
+        create_backup(database_file)
+        rosters, users, player_data, player_id_table = FantasyLeagueDatabase.initialize_league_data(self.league)
+        with open(database_file, "r") as file:
+            league_data = json.load(file)
+        change_owner_data = self.save_transactions_to_file(database_file)
+
+        for change in change_owner_data:
+            owner_id = change['owner_id']
+
+            # Find the corresponding owner in league_data
+            for owner in league_data:
+                if owner['owner_id'] == owner_id:
+                    # Handle players to add
+                    for player_id in change['players']:
+                        if player_id in player_data:
+                            player_info = player_data[player_id]
+                            player_name = f"{player_info['first_name']} {player_info['last_name']}"
+                            logging.info(f"Adding {player_name} to {owner['display_name']}'s roster.")
+                            owner['players_data'].append({player_name: [player_info]})
+
+                    # Handle players to delete
+                    for player_id in change['players_delete']:
+                        for player in owner['players_data']:
+                            for player_name, details in player.items():
+                                if details[0]['player_id'] == player_id:
+                                    logging.info(f"Removing {player_name} from {owner['display_name']}'s roster.")
+                                    owner['players_data'].remove(player)
+                                    break
+
+        with open(database_file, "w") as file:
+            json.dump(league_data, file, indent=4)
+
+    def update_player_stats_in_database(self, database_file, years=None):
+        """
+        Run update_league_database() first, then this
+        Updates the player stats in the league database file for the given year. Make sure there's a player database file to read from, run generate_player_database() first.
+        """
+        sleeper_player_data, player_id_table = FantasyLeagueDatabase.initialize_league_data(self.league)[2:4]
+        with open(database_file, "r") as file:
+            league_data = json.load(file)
+
+        for roster in league_data:
+            for player in roster['players_data']:
+                for player_name, player_data in player.items():
+                    player_id = player_data[0]['player_id']
+                    nfl_stats.Stats.fetch_game_log_data(owner_data=roster, player_data=sleeper_player_data, player_id=player_id, player_id_table=player_id_table, update=True, update_years=years)
+
+        with open(database_file, "w") as file:
+            json.dump(league_data, file, indent=4)
+
+        # clean up "Unnamed" columns the json file which comes from PFR
+        rename_keys_in_json(database_file)
 
 
 class SleeperLeague:
@@ -265,4 +328,5 @@ if __name__ == '__main__':
     4. Pass the .csv to R script to generate cluster svgs
     """
     logging_steup()
-    FantasyLeagueDatabase(LEAGUE_ID).diff_rostered_players('../json/leagueid_1075600889420845056.json',["2023"])
+    # FantasyLeagueDatabase(LEAGUE_ID).save_transactions_to_file('../json/leagueid_1075600889420845056.json')
+    FantasyLeagueDatabase(LEAGUE_ID).update_player_stats_in_database('../json/leagueid_1075600889420845056.json')
