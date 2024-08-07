@@ -24,8 +24,6 @@ import nfl.nfl_api as nfl_api
 import nfl.nfl_stats as nfl_stats
 import pandas as pd
 
-#TODO: create update_league_database() to check for new players and update the database
-
 
 class FantasyLeagueDatabase:
     """
@@ -224,9 +222,13 @@ class FantasyLeagueDatabase:
         # clean up "Unnamed" columns the json file which comes from PFR
         rename_keys_in_json(league_database_file)
 
-    def update_league_database(self, database_file):
+    def update_league_database(self, database_file, years=None, do_update=True):
         """
         Updates the league database file for the given year. Make sure there's a player database file to read from, run generate_player_database() first.
+        If do_update is off, it will only update the database file with the new transactions, but not update the player stats.
+        :param database_file: path to the league database file
+        :param years: list of years to update, optional, default is None (updates data for ALL years each player has served)
+        :param do_update: bool, default True. Updates player stats for the players that were recently transacted since the last update.
         """
         create_backup(database_file)
         rosters, users, player_data, player_id_table = FantasyLeagueDatabase.initialize_league_data(self.league)
@@ -260,7 +262,16 @@ class FantasyLeagueDatabase:
         with open(database_file, "w") as file:
             json.dump(league_data, file, indent=4)
 
-    def update_player_stats_in_database(self, database_file, years=None):
+        # Update player stats for the players that were added to the roster
+        if do_update:
+            for change in change_owner_data:
+                owner_id = change['owner_id']
+                for owner in league_data:
+                    if owner['owner_id'] == owner_id:
+                        for player_id in change['players']:
+                            FantasyLeagueDatabase(self.league_id).update_player_stats_in_database(database_file=database_file, years=years, update_player=player_id)
+
+    def update_player_stats_in_database(self, database_file, years=None, update_player=None):
         """
         Run update_league_database() first, then this
         Updates the player stats in the league database file for the given year. Make sure there's a player database file to read from, run generate_player_database() first.
@@ -273,7 +284,14 @@ class FantasyLeagueDatabase:
             for player in roster['players_data']:
                 for player_name, player_data in player.items():
                     player_id = player_data[0]['player_id']
-                    nfl_stats.Stats.fetch_game_log_data(owner_data=roster, player_data=sleeper_player_data, player_id=player_id, player_id_table=player_id_table, update=True, update_years=years)
+                    if update_player:
+                        if player_id == update_player:
+                            logging.info(f"Unique update for id: {update_player} Updating {player_name} stats for {roster['display_name']}")
+                            nfl_stats.Stats.fetch_game_log_data(owner_data=roster, player_data=sleeper_player_data, player_id=player_id, player_id_table=player_id_table, update_years=years)
+                        else:
+                            break
+                    else:
+                        nfl_stats.Stats.fetch_game_log_data(owner_data=roster, player_data=sleeper_player_data, player_id=player_id, player_id_table=player_id_table, update_years=years)
 
         with open(database_file, "w") as file:
             json.dump(league_data, file, indent=4)
@@ -328,5 +346,9 @@ if __name__ == '__main__':
     4. Pass the .csv to R script to generate cluster svgs
     """
     logging_steup()
+    # FantasyLeagueDatabase(LEAGUE_ID).generate_league_database()
+    # print(FantasyLeagueDatabase(LEAGUE_ID).diff_rostered_players('../json/leagueid_1075600889420845056.json'))
     # FantasyLeagueDatabase(LEAGUE_ID).save_transactions_to_file('../json/leagueid_1075600889420845056.json')
-    FantasyLeagueDatabase(LEAGUE_ID).update_player_stats_in_database('../json/leagueid_1075600889420845056.json')
+    # FantasyLeagueDatabase(LEAGUE_ID).update_league_database('../json/leagueid_1075600889420845056_test.json', years=['2023'])
+    FantasyLeagueDatabase(LEAGUE_ID).update_league_database('../json/leagueid_1075600889420845056_test.json')
+    # FantasyLeagueDatabase(LEAGUE_ID).update_player_stats_in_database('../json/leagueid_1075600889420845056.json')

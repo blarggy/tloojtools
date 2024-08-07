@@ -1,5 +1,7 @@
 import io
 import os.path
+
+from bs4 import BeautifulSoup
 from requests.exceptions import HTTPError
 import requests
 import json
@@ -37,7 +39,26 @@ class Stats:
         self.year = year
         self.pfr_player_id = pfr_player_id
 
-    def get_years_of_service(self, rookie_year=None):
+    def check_players_birthday(self):
+        try:
+            pfr_player_page_url = f"https://www.pro-football-reference.com/players/{self.pfr_player_id[0]}/{self.pfr_player_id}.htm"
+            logging.info(f"Getting birth date for {pfr_player_page_url=}")
+            response = requests.get(pfr_player_page_url)
+            response.raise_for_status()  # Raise HTTPError for bad responses (4xx and 5xx)
+
+            soup = BeautifulSoup(response.text, 'html.parser')
+            birth_date_element = soup.find('span\"', {'data-birth': True})
+
+            if birth_date_element:
+                return birth_date_element.get('data-birth')
+            else:
+                return None
+        except requests.exceptions.HTTPError as http_err:
+            print(f"HTTP error occurred: {http_err}")
+        except Exception as err:
+            print(f"An error occurred: {err}")
+
+    def get_years_of_service(self):
         """
         Get the years of service for a player.
         return: list -> years of service
@@ -57,9 +78,7 @@ class Stats:
             # Extract only numeric parts of the year values and filter out data that isn't a year
             years_of_service = [re.sub(r'\D', '', item) for item in years_of_service if re.sub(r'\D', '', item).isdigit() and int(re.sub(r'\D', '', item)) > 1000]
             logging.info(f"Years of service for {self.pfr_player_id}: {years_of_service}")
-            if rookie_year:
-                if years_of_service[0] != rookie_year:
-                    raise ValueError(f"Rookie year {rookie_year} does not match the first year of service {years_of_service[0]} for {self.pfr_player_id}")
+
             return years_of_service
         return []
 
@@ -117,14 +136,13 @@ class Stats:
         return self.query_pfr(url)
 
     @staticmethod
-    def fetch_game_log_data(owner_data, player_data, player_id, player_id_table, update=False, update_years=None):
+    def fetch_game_log_data(owner_data, player_data, player_id, player_id_table, update_years=None):
         """
         Gets the gamelogs data for each player from PFR on the roster and adds it to the owner_data dictionary.
         :param owner_data: dict w/ keys: owner_id, display_name, team_name, players_data (list)
         :param player_data: All NFL player data from sleeper's api as json object
         :param player_id: Sleeper player ID
         :param player_id_table: from nfl api for mapping IDs to names
-        :param update: bool, update existing data
         :param update_years: str, int or list, List of year(s) to update
         :return:
         """
@@ -187,17 +205,42 @@ class Stats:
 
             unsorted_data.sort(key=sort_key)
 
+        def fetch_and_process_game_logs(pfr_player_id, update_years, owner_data, player_name):
+            if update_years:
+                years = update_years
+            else:
+                years = Stats(pfr_player_id=pfr_player_id).get_years_of_service()
+            for year in years:
+                game_log_data = Stats(year=int(year), pfr_player_id=pfr_player_id).gamelogs_data()
+                stats = normalize_game_log_data(game_log_data, year)
+                player_exists = any(player_name in player for player in owner_data["players_data"])
+                if player_exists:
+                    # Update stats if player_name exists
+                    update_stats(owner_data["players_data"], player_name, stats)
+                else:
+                    # Append new player data if player_name does not exist
+                    owner_data["players_data"].append({player_name: [stats]})
+                time.sleep(5)  # respectfully wait
+
+        unique_cases = {
+            "5840": "AlleJo03",  # Josh Allen changed his name so his PFR ID is different than what I'd guess.
+        }
+
         if player_id in player_data:
             player_name = player_id_table.loc[player_id_table['sleeper_id'] == int(player_id), 'name'].values[0]
             pfr_player_id = player_id_table.loc[player_id_table['sleeper_id'] == int(player_id), 'pfr_id'].values[0]
             player_info = player_data[player_id]
+            if player_id in unique_cases:
+                logging.info(f"Unique case for {player_name=} {player_id=}")
+                pfr_player_id = unique_cases[player_id]
+                fetch_and_process_game_logs(pfr_player_id, update_years, owner_data, player_name)
             # In the event a player's sleeper ID isn't in the player_id_table, try to guess the player's gamelogs page.
-            if type(pfr_player_id) is float:
-                logging.error(f"{pfr_player_id=} is not in the {GLOBAL_NFL_PLAYER_ID_FILE} file. Trying to find the gamelogs page by hand...")
+            elif type(pfr_player_id) is float:
+                logging.error(f"{player_id=} doesn't have a PFR ID in the {GLOBAL_NFL_PLAYER_ID_FILE} file. Trying to find the gamelogs page by hand...")
                 first_name = player_info["first_name"]
                 last_name = player_info["last_name"]
-                # Use the player's rookie year to check if I found the right player page...
-                rookie_year = player_info["metadata"]["rookie_year"]
+                # Use the player's birthday to check if I found the right player page...
+                birthday = player_info["birth_date"]
                 pfr_player_id_chars = last_name[:4] + first_name[:2]
                 pfr_player_id_char_list = [pfr_player_id_chars + str(i).zfill(2) for i in range(10)]
                 logging.info(f"{pfr_player_id_char_list=}")
@@ -207,43 +250,35 @@ class Stats:
                         break
                     try:
                         # This query is needed to see if this is the right player page.
-                        years = Stats(pfr_player_id=id_no).get_years_of_service(rookie_year=rookie_year)
-                        valid_url_found = True
-                        if update_years:
-                            years = update_years
-                        for year in years:
-                            game_log_data = Stats(year=int(year), pfr_player_id=id_no).gamelogs_data()
-                            stats = normalize_game_log_data(game_log_data, year)
-                            if update:
-                                update_stats(owner_data["players_data"], player_name, stats)
-                            else:
-                                owner_data["players_data"].append({player_name: [stats]})
-                            time.sleep(5)  # respectfully wait
+                        check_bday = Stats(pfr_player_id=id_no).check_players_birthday()
+                        if check_bday == birthday:
+                            valid_url_found = True
+                        else:
+                            raise ValueError(f"{player_id} {birthday=} {id_no} {check_bday} Birthday doesn't match.")
+                        fetch_and_process_game_logs(id_no, update_years, owner_data, player_name)
                     except Exception as e:
                         logging.error(f"The URL for {id_no} is not valid. {e=}")
                         print(f'URL for {id_no} is not valid, trying next...')
                         time.sleep(1)
             # The player's sleeper ID is in the player_id_table, use it to get the player's gamelogs pages.
             else:
-                if update_years:
-                    years = update_years
-                else:
-                    years = Stats(pfr_player_id=pfr_player_id).get_years_of_service()
-                for year in years:
-                    game_log_data = Stats(year=int(year), pfr_player_id=pfr_player_id).gamelogs_data()
-                    stats = normalize_game_log_data(game_log_data, year)
-                    if update:
-                        update_stats(owner_data["players_data"], player_name, stats)
-                    else:
-                        owner_data["players_data"].append({player_name: [stats]})
-                    time.sleep(5)  # respectfully wait
+                fetch_and_process_game_logs(pfr_player_id, update_years, owner_data, player_name)
 
-            if not update:
-                owner_data["players_data"].insert(0, {player_name: [player_info]})
+            # Replace stale Sleeper details w/ updated data
+            for p in owner_data["players_data"]:
+                for p_n, d in p.items():
+                    try:
+                        if d[0]['player_id'] == player_id:
+                            d.pop(0)
+                            d.insert(0, player_info)
+                    except KeyError:
+                        # This is a fresh database w/o details for each player
+                        d.insert(0, player_info)
 
             for player in owner_data["players_data"]:
                 for player_name, data in player.items():
-                    sort_players_data(data)
+                    if data[0]['player_id'] == player_id:
+                        sort_players_data(data)
 
             return owner_data
 
@@ -393,4 +428,4 @@ if __name__ == '__main__':
     # clean up "Unnamed" columns the json file which comes from PFR
     utils.rename_keys_in_json('../data/test2.json')
     # test = Stats(pfr_player_id="WardCh00")
-    # print(Stats.get_years_of_service(test))
+    # print(Stats.check_players_birthday(test))
