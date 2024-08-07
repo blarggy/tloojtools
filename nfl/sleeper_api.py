@@ -350,5 +350,7 @@ if __name__ == '__main__':
     # print(FantasyLeagueDatabase(LEAGUE_ID).diff_rostered_players('../json/leagueid_1075600889420845056.json'))
     # FantasyLeagueDatabase(LEAGUE_ID).save_transactions_to_file('../json/leagueid_1075600889420845056.json')
     # FantasyLeagueDatabase(LEAGUE_ID).update_league_database('../json/leagueid_1075600889420845056_test.json', years=['2023'])
-    FantasyLeagueDatabase(LEAGUE_ID).update_league_database('../json/leagueid_1075600889420845056_test.json')
+    # FantasyLeagueDatabase(LEAGUE_ID).update_league_database('../json/leagueid_1075600889420845056_test.json')
     # FantasyLeagueDatabase(LEAGUE_ID).update_player_stats_in_database('../json/leagueid_1075600889420845056.json')
+    league = SleeperLeague(LEAGUE_ID).get_league_by_id()
+    nfl_stats.NFLStatsDatabase('../json/leagueid_1075600889420845056.json', league).calculate_fantasy_points()

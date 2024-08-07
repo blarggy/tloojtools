@@ -327,7 +327,7 @@ class NFLStatsDatabase:
 
     def calculate_fantasy_points(self):
         """
-        Calculate the impact of a player's stats on their team (assumes 'gamelogs' database)
+        Calculate the impact of a player's stats on their team by converting stats to fantasy points.
         """
 
         def get_player_stats(database_data, player_data_dict, process_stats_func):
@@ -335,24 +335,22 @@ class NFLStatsDatabase:
                 for player_data in roster['players_data']:
                     for player_name, stats in player_data.items():
                         player_id = stats[0]['player_id']
-                        # Use a unique key to identify each player to avoid situations where players have identical names
                         unique_key = f"{player_name}_{player_id}"
-                        #TODO: This is where the logic needs to be different to handle multiple years of stats
-                        player_stats = stats[1]
-                        player_data_dict.setdefault(unique_key, [])
-                        for year, stats_table in player_stats.items():
-                            process_stats_func(unique_key, stats_table)
+                        player_data_dict.setdefault(unique_key, {})
 
-        def get_points(unique_key, stats_table):
+                        # Iterate through all stats dictionaries
+                        for stat_dict in stats[1:]:
+                            for year, stats_table in stat_dict.items():
+                                if year not in player_data_dict[unique_key]:
+                                    player_data_dict[unique_key][year] = []
+                                process_stats_func(unique_key, year, stats_table)
+
+        def get_points(unique_key, year, stats_table):
             player_name, player_id = unique_key.rsplit('_', 1)
-            logging.info(f"Calculating fantasy points for {player_name} with ID {player_id}")
+            logging.info(f"Calculating fantasy points for {player_name} with ID {player_id} for year {year}")
             for column_header, week_stats in stats_table.items():
                 logging.debug(f"{column_header=}, {week_stats=}")
-                # TODO: use utils.rename_keys_in_json() to clean up column headers before calling this
-                if column_header.startswith("Unnamed"):
-                    stat_key = column_header.split('_')[-1]
-                else:
-                    stat_key = column_header
+                stat_key = column_header
                 logging.debug(f"{stat_key=}")
                 stats_dict = {}
                 if stat_key in self.stat_weight:
@@ -363,19 +361,26 @@ class NFLStatsDatabase:
                             fantasy_points = 0
                         stats_dict[index] = round(fantasy_points, 2)
                         logging.debug(f"{index=}, {stat_key=}, {stat_value=}, {fantasy_points=}")
-                if stats_dict != {}:
-                    player_data_dict[unique_key].append({stat_key: stats_dict})
+                if stats_dict:
+                    player_data_dict[unique_key][year].append({stat_key: stats_dict})
 
-        def write_points_to_file(unique_key, stats_table):
-            if unique_key in player_data_dict:
-                fantasy_points_dict = player_data_dict[unique_key][-1]
-                if 'combined_stats' in fantasy_points_dict:
-                    stats_table["fantasy_points"] = fantasy_points_dict['combined_stats']
+        def write_points_to_file(unique_key, year, stats_table):
+            if unique_key in player_data_dict and year in player_data_dict[unique_key]:
+                if isinstance(player_data_dict[unique_key][year], dict):  # Check if the object is a dictionary
+                    fantasy_points_dict = player_data_dict[unique_key][year]
+                    if 'combined_stats' in fantasy_points_dict and fantasy_points_dict['combined_stats']:  # Check if combined_stats is not empty
+                        stats_table["fantasy_points"] = fantasy_points_dict['combined_stats']
+                    else:
+                        logging.warning(f"Combined stats are empty for {unique_key} in year {year}")
+                else:
+                    logging.warning(f"Expected a dictionary but found {type(player_data_dict[unique_key][year])} for {unique_key} in year {year}")
+            else:
+                logging.warning(f"No stats found for {unique_key} in year {year}")
 
         with open(self.database_file) as file:
             database_data = json.load(file)
 
-        create_backup(os.path.abspath(file.name))
+        # create_backup(os.path.abspath(file.name))
 
         logging.info(f"Calculating fantasy points for each player in {self.database_file}")
         player_data_dict = {}
@@ -385,19 +390,18 @@ class NFLStatsDatabase:
 
         logging.debug(f"Before combining stats {player_data_dict=}")
 
-        # Add up all stats for each player to get total fantasy points
+        # Add up all stats for each player to get total fantasy points for each year
         for player_name, stats in player_data_dict.items():
-            combined_stats = {}
-
-            for stat_column in stats:
-                for stat, value_dict in stat_column.items():
-                    for index, value in value_dict.items():
-                        if index in combined_stats:
-                            combined_stats[index] += round(value, 2)
-                        else:
-                            combined_stats[index] = round(value, 2)
-
-            player_data_dict[player_name].append({"combined_stats": combined_stats})
+            for year, stat_columns in stats.items():
+                combined_stats = {}
+                for stat_column in stat_columns:
+                    for stat, value_dict in stat_column.items():
+                        for index, value in value_dict.items():
+                            if index in combined_stats:
+                                combined_stats[index] += round(value, 2)
+                            else:
+                                combined_stats[index] = round(value, 2)
+                player_data_dict[player_name][year] = {"combined_stats": combined_stats}
 
         logging.debug(f"After combining stats {player_data_dict=}")
 
@@ -410,22 +414,23 @@ class NFLStatsDatabase:
 
 if __name__ == '__main__':
     logging_steup()
-    with open('../data/test.json', 'r') as file:
-        database = json.load(file)
-    with open('../json/player_data.json', 'r') as file:
-        sleeper_player_data = json.load(file)
-    with open('../json/player_id_table.csv', 'r') as file:
-        player_id_table = pd.read_csv(file)
-    for roster in database:
-        for player in roster['players_data']:
-            for player_name, player_data in player.items():
-                player_id = player_data[0]['player_id']
-                Stats.fetch_game_log_data(owner_data=roster, player_data=sleeper_player_data, player_id=player_id, player_id_table=player_id_table, update=True)
+    # # Test harness for crawling PFR for player data
+    # with open('../data/test.json', 'r') as file:
+    #     database = json.load(file)
+    # with open('../json/player_data.json', 'r') as file:
+    #     sleeper_player_data = json.load(file)
+    # with open('../json/player_id_table.csv', 'r') as file:
+    #     player_id_table = pd.read_csv(file)
+    # for roster in database:
+    #     for player in roster['players_data']:
+    #         for player_name, player_data in player.items():
+    #             player_id = player_data[0]['player_id']
+    #             Stats.fetch_game_log_data(owner_data=roster, player_data=sleeper_player_data, player_id=player_id, player_id_table=player_id_table)
+    #
+    # with open('../data/test2.json', "w") as file:
+    #     json.dump(database, file, indent=4)
+    # utils.rename_keys_in_json('../data/test2.json')
 
-    with open('../data/test2.json', "w") as file:
-        json.dump(database, file, indent=4)
-
-    # clean up "Unnamed" columns the json file which comes from PFR
-    utils.rename_keys_in_json('../data/test2.json')
     # test = Stats(pfr_player_id="WardCh00")
     # print(Stats.check_players_birthday(test))
+
