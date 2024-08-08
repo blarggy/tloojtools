@@ -5,7 +5,7 @@ from app import app
 
 
 def load_database():
-    with open('data/2023_gamelogs_leagueid_1075600889420845056.json') as file:
+    with open('json/leagueid_1075600889420845056.json') as file:
         database_data = json.load(file)
     return database_data
 
@@ -14,9 +14,14 @@ def reformat_player_data(player_dataframe):
     # handle whitespace
     player_dataframe = player_dataframe.fillna('')
     player_dataframe = player_dataframe.replace('null', '')
+
     # Cast some columns to appropriate types
-    player_dataframe['G#'] = player_dataframe['G#'].apply(lambda x: int(float(x)) if x != '' else x)
-    player_dataframe['Week'] = player_dataframe['Week'].apply(lambda x: int(float(x)) if x != '' else x)
+    if 'G#' in player_dataframe.columns:
+        player_dataframe['G#'] = player_dataframe['G#'].apply(lambda x: int(float(x)) if x != '' else x)
+    if 'Week' in player_dataframe.columns:
+        player_dataframe['Week'] = player_dataframe['Week'].apply(lambda x: int(float(x)) if x != '' else x)
+    player_dataframe.columns = player_dataframe.columns.astype(str)
+
     # resolve column names
     player_dataframe.columns = player_dataframe.columns.str.replace('Rk', 'Index') \
         .str.replace('G#', 'Game') \
@@ -100,13 +105,17 @@ def get_player_info(player_id):
                     player_query.update({
                         'player_name': player_name,
                         'details': player_details[0],
-                        'stats': player_details[1].keys()
+                        'stats': [detail.keys() for detail in player_details[1:]]
                     })
-                    player_stats = player_details[1]
-                    for year, stats in player_stats.items():
+                    for year, stats in player_details[1].items():
                         player_df = pd.DataFrame(stats)
                         player_df = reformat_player_data(player_df)
                         player_tables[year] = player_df.to_html(classes='table table-striped', index=False)
+                    for detail in player_details[2:]:
+                        for year, stats in detail.items():
+                            player_df = pd.DataFrame(stats)
+                            player_df = reformat_player_data(player_df)
+                            player_tables[year] = player_df.to_html(classes='table table-striped', index=False)
     return player_query, player_tables
 
 
